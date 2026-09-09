@@ -23,7 +23,10 @@
   var LOGO_LABELS = {
     toolhound_logo: 'ToolHound logo',
     custom_logo: 'Customer logo supplied',
-    custom_text: 'Text only'
+    custom_text: 'Text only',
+    // Stated as an instruction rather than an absence, because "none" on a
+    // vendor sheet reads as an omission somebody should chase.
+    serial_only: 'Serial number only — no logo, no text'
   };
 
   function el(tag, attrs, children) {
@@ -121,6 +124,30 @@
     var v = parseInt(String(n == null ? '' : n).trim(), 10);
     if (!isFinite(v)) return txt(n);
     return v.toLocaleString('en-CA');
+  }
+
+  function artworkText(logoChoice) {
+    return LOGO_LABELS[logoChoice] || txt(logoChoice) || '—';
+  }
+
+  /**
+   * What the supplier is told to do. The customer's own words first, then the
+   * standing reference line, so the vendor reads one instruction block rather
+   * than hunting two places.
+   *
+   * Shared by the printed document and the email flavour. When these were two
+   * copies of the same paragraph, an email could tell Metalcraft one thing
+   * while the sheet attached to it said another.
+   */
+  function supplierInstructions(o, ref) {
+    var by = (window.TOOLHOUND_CONFIG || {}).orderedBy || {};
+    var standing = 'Send a proof for customer approval before production, and quote '
+      + 'our reference ' + (ref || '(see above)') + ' on the proof, order '
+      + 'acknowledgement, packing slip and invoice.'
+      + (by.salesEmail ? ' Send the proof to ' + by.salesEmail + '.' : '')
+      + (by.accountingEmail ? ' Send the invoice to ' + by.accountingEmail + '.' : '');
+    var instr = txt(o.instructions).trim();
+    return instr ? instr + ' ' + standing : standing;
   }
 
   function colourText(fullColour) {
@@ -389,7 +416,7 @@
 
     // --- artwork and handling --------------------------------------------
     var artwork = el('div', { class: 'od-kv' });
-    labelled('Artwork', LOGO_LABELS[o.logoChoice] || '')
+    labelled('Artwork', artworkText(o.logoChoice))
       .forEach(function (n) { artwork.appendChild(n); });
     labelled('Logo file name (if applicable)',
       o.logoChoice === 'custom_logo' ? txt(o.logoFileName) : '')
@@ -415,17 +442,9 @@
     ]));
 
     // --- instructions -----------------------------------------------------
-    // The customer's own words first, then the standing reference line, so the
-    // vendor sees one instruction block rather than hunting two places.
-    var standing = 'Send a proof for customer approval before production, and quote '
-      + 'our reference ' + (ref || '(see above)') + ' on the proof, order '
-      + 'acknowledgement, packing slip and invoice.'
-      + (by.salesEmail ? ' Send the proof to ' + by.salesEmail + '.' : '')
-      + (by.accountingEmail ? ' Send the invoice to ' + by.accountingEmail + '.' : '');
-    var instr = txt(o.instructions).trim();
     doc.appendChild(el('div', { class: 'od-block' }, [
       el('span', { class: 'od-lab od-blk', text: 'Instructions to supplier' }),
-      el('div', { text: instr ? instr + ' ' + standing : standing })
+      el('div', { text: supplierInstructions(o, ref) })
     ]));
 
     // --- authorisation ----------------------------------------------------
@@ -464,10 +483,253 @@
     return doc;
   }
 
+  // ---------------------------------------------------------------------------
+  // Email flavour
+  //
+  // The same order, serialised for pasting into Outlook or Gmail. It cannot be
+  // the print markup: that is CSS grid with classes in a stylesheet, and every
+  // mail client throws the stylesheet away and most mangle grid. So this is
+  // tables with a style attribute on every cell, which is the one layout
+  // technique mail clients have always agreed on.
+  //
+  // It is built from the same normalised order object and the same helpers as
+  // render(), so the material wording, the die size and the sequence split
+  // cannot say one thing on the printed sheet and another in the email.
+  // ---------------------------------------------------------------------------
+
+  var EM = {
+    body: 'font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#201B1A;',
+    lab: 'font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:bold;'
+       + 'letter-spacing:.06em;text-transform:uppercase;color:#5B5352;',
+    labGap: 'padding-bottom:3px;',
+    cell: 'font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#201B1A;'
+        + 'padding:7px 9px;border:1px solid #C8BFBB;vertical-align:top;',
+    th: 'font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:bold;'
+      + 'letter-spacing:.06em;text-transform:uppercase;color:#5B5352;'
+      + 'text-align:left;padding:6px 9px;border:1px solid #C8BFBB;'
+      + 'background:#F4F1EF;',
+    sec: 'font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;'
+       + 'letter-spacing:.1em;text-transform:uppercase;color:#ffffff;'
+       + 'background:#201B1A;padding:5px 9px;'
+  };
+
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /** A label over a value, as one table cell. */
+  function emCell(label, lines, extra) {
+    var html = '<td style="' + EM.cell + (extra || '') + '">'
+      + '<div style="' + EM.lab + EM.labGap + '">' + esc(label) + '</div>';
+    (Array.isArray(lines) ? lines : [lines]).forEach(function (l) {
+      if (l === null || l === undefined || l === '') return;
+      html += '<div>' + esc(l) + '</div>';
+    });
+    return html + '</td>';
+  }
+
+  function emRow(label, value) {
+    return '<tr><td style="' + EM.cell + 'width:150px;background:#FAF7F4;">'
+      + '<div style="' + EM.lab + '">' + esc(label) + '</div></td>'
+      + '<td style="' + EM.cell + '"><strong>' + esc(value || '—')
+      + '</strong></td></tr>';
+  }
+
+  function emSection(title) {
+    return '<tr><td colspan="2" style="' + EM.sec + '">' + esc(title) + '</td></tr>';
+  }
+
+  /**
+   * `opts.logoUrl` is an absolute URL for the ToolHound mark; a relative one is
+   * meaningless once the HTML has left the page. `opts.artwork` is the
+   * customer's file as { name, dataUrl } when it is a raster the client can
+   * show inline, or { name } alone when it has to be attached instead.
+   */
+  function emailHtml(o, opts) {
+    opts = opts || {};
+    var cfg = (window.TOOLHOUND_CONFIG || {});
+    var by = cfg.orderedBy || {};
+    var sup = cfg.supplier || {};
+    var ref = txt(o.quoteNumber).trim() || txt(o.orderRef).trim();
+    var seq = splitSequence(o.seqStart, o.quantity);
+    var shape = shapeOf(cfg, o.labelType, o.labelWidthIn, o.labelHeightIn);
+
+    var h = '<div style="' + EM.body + 'max-width:760px;">';
+
+    // masthead
+    h += '<table cellpadding="0" cellspacing="0" border="0" width="100%"'
+      + ' style="border-collapse:collapse;margin-bottom:12px;"><tr>'
+      + '<td style="vertical-align:middle;">';
+    if (opts.logoUrl) {
+      h += '<img src="' + esc(opts.logoUrl) + '" alt="ToolHound" height="40"'
+        + ' style="height:40px;width:auto;display:block;border:0;">';
+    } else {
+      h += '<strong style="font-size:17px;">ToolHound</strong>';
+    }
+    h += '</td><td style="text-align:right;vertical-align:middle;">'
+      + '<div style="font-size:17px;font-weight:bold;letter-spacing:.03em;">'
+      + 'LABEL ORDER</div>'
+      + '<div style="font-size:12px;color:#5B5352;">Quote no. <strong'
+      + ' style="color:#201B1A;">' + esc(ref || '—') + '</strong></div>'
+      + '<div style="font-size:12px;color:#5B5352;">Issued '
+      + esc(fmtDate(o.issuedAt)) + '</div>'
+      + '</td></tr></table>';
+
+    h += '<table cellpadding="0" cellspacing="0" border="0" width="100%"'
+      + ' style="border-collapse:collapse;">';
+
+    // parties
+    h += '<tr>'
+      + emCell('Ship to — deliver direct to end customer', [
+          txt(o.companyName),
+          txt(o.address),
+          [txt(o.city), txt(o.stateProvince), txt(o.postalCode)]
+            .filter(Boolean).join(', '),
+          txt(o.country),
+          o.attentionName ? 'Attention: ' + txt(o.attentionName) : '',
+          txt(o.shipToPhone)
+        ], 'background:#FBEDEC;')
+      + emCell('Supplier', [txt(sup.name)].concat(sup.addressLines || []))
+      + '</tr>';
+    h += '<tr>'
+      + emCell('Ordered by', [txt(by.name), txt(by.salesEmail),
+          txt(by.accountingEmail), txt(by.phone)])
+      + emCell('Our reference — quote this on all documents', [ref || '—'])
+      + '</tr>';
+
+    // specification
+    h += emSection('Label specification');
+    h += emRow('Material', materialText(cfg, o.labelType));
+    h += emRow('Die size', dieSize(o.labelWidthIn, o.labelHeightIn, shape));
+    h += emRow('Colours', colourText(o.fullColor));
+    h += emRow('Quantity', groupThousands(o.quantity));
+
+    // sequence
+    h += emSection('Sequence');
+    if (seq && seq.from) {
+      h += emRow('Numbers', txt(o.seqStart).trim() + ' through '
+        + seq.prefix + seq.to + seq.suffix);
+      h += emRow('Count', groupThousands(seq.count));
+    } else {
+      h += emRow('Numbers', 'Not serialised');
+    }
+
+    // artwork
+    h += emSection('Artwork');
+    h += emRow('Type', artworkText(o.logoChoice));
+    if (o.logoChoice === 'custom_text') {
+      h += emRow('Text on label', (o.textLines || []).join('  /  '));
+    }
+    if (o.logoFileName) h += emRow('Logo file name', o.logoFileName);
+
+    // instructions -- called out on its own because it is the part a person
+    // wrote, and the part most likely to be the reason for the email.
+    h += emSection('Instructions to supplier');
+    h += '<tr><td colspan="2" style="' + EM.cell + '">'
+      + esc(supplierInstructions(o, ref)).replace(/\n/g, '<br>')
+      + '</td></tr>';
+
+    h += '</table>';
+
+    if (opts.artwork && opts.artwork.dataUrl) {
+      h += '<div style="' + EM.body + 'margin-top:14px;">'
+        + '<div style="' + EM.lab + EM.labGap + '">Customer artwork — '
+        + esc(opts.artwork.name || 'attached') + '</div>'
+        + '<img src="' + esc(opts.artwork.dataUrl) + '" alt="Customer artwork"'
+        + ' style="max-width:300px;height:auto;border:1px solid #C8BFBB;">'
+        + '</div>';
+    } else if (opts.artwork && opts.artwork.name) {
+      h += '<div style="' + EM.body + 'margin-top:14px;color:#5B5352;">'
+        + '<strong>Artwork:</strong> ' + esc(opts.artwork.name)
+        + ' — attached to this email.</div>';
+    }
+
+    h += '<div style="' + EM.body + 'margin-top:14px;font-size:11px;'
+      + 'color:#8C8280;border-top:1px solid #D9D3D0;padding-top:8px;">'
+      + esc(txt(by.name)) + ' · ' + esc(txt(by.salesEmail)) + ' · '
+      + esc(txt(by.accountingEmail)) + ' · ' + esc(txt(by.phone))
+      + '</div>';
+
+    return h + '</div>';
+  }
+
+  /**
+   * The plain-text flavour. Written to the clipboard alongside the HTML so a
+   * plain-text composer, or a paste into a terminal or a ticket, still gets
+   * something readable rather than a wall of tags.
+   */
+  function emailText(o, opts) {
+    opts = opts || {};
+    var cfg = (window.TOOLHOUND_CONFIG || {});
+    var by = cfg.orderedBy || {};
+    var sup = cfg.supplier || {};
+    var ref = txt(o.quoteNumber).trim() || txt(o.orderRef).trim();
+    var seq = splitSequence(o.seqStart, o.quantity);
+    var shape = shapeOf(cfg, o.labelType, o.labelWidthIn, o.labelHeightIn);
+    var L = [];
+
+    L.push('LABEL ORDER');
+    L.push('Quote no.: ' + (ref || '-'));
+    L.push('Issued: ' + fmtDate(o.issuedAt));
+    L.push('');
+    L.push('SHIP TO - DELIVER DIRECT TO END CUSTOMER');
+    L.push('  ' + txt(o.companyName));
+    L.push('  ' + txt(o.address));
+    L.push('  ' + [txt(o.city), txt(o.stateProvince), txt(o.postalCode)]
+      .filter(Boolean).join(', '));
+    L.push('  ' + txt(o.country));
+    if (o.attentionName) L.push('  Attention: ' + txt(o.attentionName));
+    if (o.shipToPhone) L.push('  ' + txt(o.shipToPhone));
+    L.push('');
+    L.push('SUPPLIER');
+    L.push('  ' + txt(sup.name));
+    (sup.addressLines || []).forEach(function (l) { L.push('  ' + l); });
+    L.push('');
+    L.push('LABEL SPECIFICATION');
+    L.push('  Material:  ' + materialText(cfg, o.labelType));
+    L.push('  Die size:  ' + dieSize(o.labelWidthIn, o.labelHeightIn, shape));
+    L.push('  Colours:   ' + colourText(o.fullColor));
+    L.push('  Quantity:  ' + groupThousands(o.quantity));
+    L.push('');
+    L.push('SEQUENCE');
+    if (seq && seq.from) {
+      L.push('  ' + txt(o.seqStart).trim() + ' through '
+        + seq.prefix + seq.to + seq.suffix
+        + '  (' + groupThousands(seq.count) + ' labels)');
+    } else {
+      L.push('  Not serialised');
+    }
+    L.push('');
+    L.push('ARTWORK');
+    L.push('  Type: ' + artworkText(o.logoChoice));
+    if (o.logoChoice === 'custom_text') {
+      L.push('  Text on label: ' + (o.textLines || []).join('  /  '));
+    }
+    if (o.logoFileName) L.push('  Logo file name: ' + o.logoFileName);
+    if (opts.artwork && opts.artwork.name) {
+      L.push('  Artwork file: ' + opts.artwork.name
+        + (opts.artwork.dataUrl ? ' (shown above)' : ' (attached)'));
+    }
+    L.push('');
+    L.push('INSTRUCTIONS TO SUPPLIER');
+    supplierInstructions(o, ref).split('\n').forEach(function (l) {
+      L.push('  ' + l);
+    });
+    L.push('');
+    L.push(txt(by.name) + ' · ' + txt(by.salesEmail) + ' · '
+      + txt(by.accountingEmail) + ' · ' + txt(by.phone));
+
+    return L.join('\n');
+  }
+
   window.TOOLHOUND_ORDER_DOC = {
     render: render,
     fromForm: fromForm,
     fromRow: fromRow,
+    emailHtml: emailHtml,
+    emailText: emailText,
     // Exposed for the test suite, which checks the sequence split directly
     // rather than by reading it back out of the rendered table.
     splitSequence: splitSequence,

@@ -391,6 +391,9 @@ button.link:hover{color:var(--red-dark);}
   border-bottom:1px solid var(--line);
   background:var(--paper);
 }
+/* Two ways out of the record: printed, or pasted into an email. */
+.record-buttons{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
 .record-doc{padding:24px 28px 30px;}
 .record-doc .review-block:first-of-type{margin-top:4px;}
 /* styles.css only dresses .print-header inside @media print, because on the
@@ -467,10 +470,21 @@ button.danger-outline:hover{border-color:#C0392B;background:#fdf6f5;}
   outline-offset:-2px;
 }
 
-/* Print only the record, not the dashboard sitting behind it. */
+/* Print only the record, not the dashboard sitting behind it.
+ *
+ * Every wrapper between the page box and the document has to give up its
+ * shell, not just be un-decorated. The card's own padding cost 40px of a 695px
+ * printable width, which pushed the document taller, which is how a one-page
+ * supplier form ended up spilling onto a second page. */
 @media print{
+  body.printing-record{background:#fff;}
   body.printing-record .topbar,
   body.printing-record .admin-wrap > *:not(.record-overlay){display:none !important;}
+  body.printing-record .admin-wrap{
+    max-width:none;
+    margin:0;
+    padding:0;
+  }
   body.printing-record .record-overlay{
     position:static;
     inset:auto;
@@ -480,8 +494,11 @@ button.danger-outline:hover{border-color:#C0392B;background:#fdf6f5;}
   }
   body.printing-record .record-sheet{
     max-width:none;
+    margin:0;
+    background:none;
     box-shadow:none;
     border-radius:0;
+    overflow:visible;
   }
   body.printing-record .record-actions{display:none !important;}
   body.printing-record .record-doc{padding:0;}

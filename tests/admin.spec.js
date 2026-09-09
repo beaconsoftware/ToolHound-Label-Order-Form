@@ -700,6 +700,62 @@ test.describe('authorization record', () => {
     await expect(record).toContainText('0.6250 in dia.');
   });
 
+  test('copies the order for an email in both flavours', async ({ page }) => {
+    // ClipboardItem needs a permission grant in headless; stub the write and
+    // assert what the page hands it, which is the part this code owns.
+    await page.addInitScript(() => {
+      window.__CLIP__ = [];
+      window.ClipboardItem = function (items) { this.items = items; };
+      navigator.clipboard.write = async (arr) => {
+        const out = {};
+        for (const [type, blob] of Object.entries(arr[0].items)) {
+          out[type] = await blob.text();
+        }
+        window.__CLIP__.push(out);
+      };
+    });
+    await openDashboard(page);
+    await page.getByRole('row', { name: /Acme Industrial/ })
+      .getByRole('button', { name: 'Details' }).click();
+    await page.getByRole('button', { name: 'Copy for email' }).click();
+    await expect(page.getByText('Copied. Paste into your email.')).toBeVisible();
+
+    const clip = (await page.evaluate(() => window.__CLIP__))[0];
+
+    // Both flavours, or a plain-text composer gets literal tags.
+    expect(Object.keys(clip).sort()).toEqual(['text/html', 'text/plain']);
+
+    // Tables and inline styles, not the grid markup a mail client would mangle.
+    expect(clip['text/html']).toContain('<table');
+    expect(clip['text/html']).not.toContain('class="od-parties"');
+    expect(clip['text/html']).toMatch(/<td style="[^"]*border:1px solid/);
+
+    // A relative logo src is meaningless once the HTML has left the page.
+    expect(clip['text/html']).toMatch(
+      /<img src="http:\/\/[^"]*\/toolhound-logo\.png"/);
+
+    // No declaration written twice: Outlook drops a style attribute it cannot
+    // parse, and the label styles used to carry two paddings.
+    expect(clip['text/html']).not.toMatch(/style="[^"]*padding:[^"]*padding:/);
+
+    // The same facts as the printed sheet, including the round-die wording.
+    // The HTML flavour escapes the inch mark, so each is checked in its own
+    // encoding rather than pretending they are the same string.
+    for (const flavour of [clip['text/html'], clip['text/plain']]) {
+      expect(flavour).toContain('Acme Industrial');
+      expect(flavour).toContain('0.6250 in dia.');
+      expect(flavour).toContain('ACME');
+      // The standing instruction, which the vendor acts on.
+      expect(flavour).toContain('Send a proof for customer approval');
+    }
+    expect(clip['text/html']).toContain('.003&quot; anodized aluminum foil label');
+    expect(clip['text/plain']).toContain('.003" anodized aluminum foil label');
+
+    // The plain flavour is readable text, not markup.
+    expect(clip['text/plain']).not.toContain('<td');
+    expect(clip['text/plain']).toContain('LABEL SPECIFICATION');
+  });
+
   test('closes on Escape', async ({ page }) => {
     await openDashboard(page);
     await page.getByRole('button', { name: 'Details' }).first().click();

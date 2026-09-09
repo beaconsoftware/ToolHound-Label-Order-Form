@@ -707,6 +707,77 @@ test.describe('fields the vendor PO needs', () => {
       .toContainText('.002" white polypropylene label');
   });
 
+  // A label that carries the serial number and nothing else. The other three
+  // options could not express it, which is how "NO TEXT" ended up being typed
+  // in as the text on a real order.
+  test.describe('serial number only', () => {
+    test('asks no artwork or colour questions and submits bare',
+      async ({ page }) => {
+        await fillStep1(page);
+        await page.getByRole('button', { name: 'Continue' }).click();
+
+        await page.getByRole('radio', { name: 'Serial Number Only' }).check();
+        // No logo to colour, so the question and its surcharge do not apply.
+        await expect(page.getByText('Should the logo be printed in full colour?'))
+          .toHaveCount(0);
+        // And no artwork inputs.
+        await expect(page.getByLabel('Text line 1')).toHaveCount(0);
+        await expect(page.getByText('Upload customer logo file')).toHaveCount(0);
+
+        await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
+        await page.getByRole('radio', { name: '0.625" Round' }).check();
+        await fillQuantity(page, '500');
+        await page.getByLabel('Starting Label Number *').fill('NT017800');
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await page.getByRole('button', { name: 'Continue to Authorization' }).click();
+        await fillStep4(page);
+        await page.getByRole('button', { name: 'Submit Order' }).click();
+
+        const row = (await page.evaluate(() => window.__INSERTED__))[0];
+        expect(row.logo_choice).toBe('serial_only');
+        expect(row.text_lines).toBeNull();
+        expect(row.logo_file_name).toBeNull();
+        // The column is required, and the implied answer is no surcharge.
+        expect(row.full_color).toBe('No');
+      });
+
+    test('the vendor document says so rather than leaving artwork blank',
+      async ({ page }) => {
+        await fillStep1(page);
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await page.getByRole('radio', { name: 'Serial Number Only' }).check();
+        await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
+        await page.getByRole('radio', { name: '0.625" Round' }).check();
+        await fillQuantity(page, '500');
+        await page.getByLabel('Starting Label Number *').fill('NT017800');
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await page.getByRole('button', { name: 'Continue to Authorization' }).click();
+        await fillStep4(page);
+        await page.getByRole('button', { name: 'Submit Order' }).click();
+
+        await page.waitForSelector('.order-doc', { state: 'attached' });
+        await page.emulateMedia({ media: 'print' });
+        const doc = page.locator('.order-doc');
+        await expect(doc).toContainText('Serial number only');
+        await expect(doc).toContainText('no logo, no text');
+        await expect(doc).not.toContainText('NO TEXT');
+      });
+
+    // The reason this option exists: it is available on the die that has no
+    // room for text, where Custom Text is not.
+    test('is available on the round die, unlike custom text', async ({ page }) => {
+      await fillStep1(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+
+      await page.getByRole('radio', { name: 'Serial Number Only' }).check();
+      await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
+      await expect(page.getByRole('radio', { name: '0.625" Round' })).toBeEnabled();
+
+      await page.getByRole('radio', { name: 'Custom Text' }).check();
+      await expect(page.getByRole('radio', { name: '0.625" Round' })).toBeDisabled();
+    });
+  });
+
   // 0.625" across leaves nowhere to put a line of text beside the code, so the
   // combination has to be unreachable rather than merely discouraged.
   test.describe('no text on the round die', () => {
