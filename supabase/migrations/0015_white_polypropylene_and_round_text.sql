@@ -68,6 +68,23 @@ alter table public.label_orders
 -- No text on the round die. Both halves of "text" are covered: the artwork
 -- choice and the lines themselves, because a row could carry either without
 -- the other and neither is printable at 0.625".
+--
+-- NOT VALID, and that is the point rather than a shortcut. Order
+-- THL-MTTFUC53-GUVFT7 (NWT Forest Management Division, quote GC-24-175A)
+-- already violates it: the customer wanted no text on a round label, the form
+-- made them pick an artwork option anyway, and they typed the words "NO TEXT"
+-- as the text. Left alone that order prints NO TEXT on 500 aluminium labels.
+--
+-- Rejecting the order is the wrong remedy. It is a legitimate order against a
+-- missing option: for the round die neither a logo nor text is right, and the
+-- form has no way to say "serial number only". NOT VALID stops the next
+-- customer making the same mistake while leaving that row for a person to
+-- correct, because silently rewriting a signed customer authorisation is not
+-- something a migration should do.
+--
+-- Once the order is corrected and the form offers a code-only option:
+--   alter table public.label_orders
+--     validate constraint label_orders_round_labels_carry_no_text;
 alter table public.label_orders
   drop constraint if exists label_orders_round_labels_carry_no_text;
 
@@ -76,4 +93,4 @@ alter table public.label_orders
     label_type is distinct from 'anodized_aluminum_3mil'
     or label_width_in is distinct from 0.625
     or (logo_choice <> 'custom_text' and text_lines is null)
-  );
+  ) not valid;
