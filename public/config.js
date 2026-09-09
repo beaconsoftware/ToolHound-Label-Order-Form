@@ -28,6 +28,32 @@ window.TOOLHOUND_CONFIG = {
     website: 'https://www.toolhound.com/'
   },
 
+  // Who the order comes from, as it prints on the label order document.
+  // No postal address by design: the customer's shipping address is the only
+  // address on that sheet, so there is exactly one place to ship to and no
+  // chance of a reader picking the wrong block.
+  orderedBy: {
+    name: 'ToolHound, Inc.',
+    salesEmail: 'sales@toolhound.com',
+    accountingEmail: 'accounting@toolhound.com',
+    phone: '1 (800) 387-8665'
+  },
+
+  // The label supplier, as it prints on the same document.
+  supplier: {
+    name: 'Metalcraft, Inc.',
+    addressLines: [
+      '3360 9th Street SW',
+      'Mason City, IA  50401',
+      'United States'
+    ]
+  },
+
+  // The stock every label order is printed on, in the supplier's own wording.
+  // One value because one product: if a second stock is ever ordered this
+  // stops being a constant and becomes a field on the order.
+  labelStock: '.002" Premium Poly Pro barcode label',
+
   // The authorization statement the customer agrees to. It lives here because
   // both the form and the internal dashboard render it -- the form to collect
   // the agreement, the dashboard to reproduce the signed record -- and two

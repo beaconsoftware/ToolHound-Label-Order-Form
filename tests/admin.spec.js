@@ -656,15 +656,19 @@ test.describe('authorization record', () => {
 
     const record = page.getByRole('dialog', { name: /Authorization record/ });
     await expect(record).toBeVisible();
-    await expect(record).toContainText('THL-AAAA-BBBBBB');
     await expect(record).toContainText('Northgate Mining');
-    // The label the customer sees, not the database column name.
-    await expect(record).toContainText('Shipping Address');
-    await expect(record).toContainText('Full Colour');
+    // The dashboard now reproduces the order document itself rather than a
+    // second rendering of the same fields, so these are the document's own
+    // section names.
+    await expect(record.locator('.order-doc')).toHaveCount(1);
+    await expect(record).toContainText('Ship to');
+    await expect(record).toContainText('Label specification');
+    await expect(record).toContainText('Sequence');
+    await expect(record).toContainText('Customer authorisation');
     // The wording actually agreed to, shared through config.js.
     await expect(record).toContainText('cannot be returned once the approved order');
     // The signature is a PNG, which is why it is safe to show inline.
-    await expect(record.locator('img.sig-print')).toHaveAttribute(
+    await expect(record.locator('img.od-sigimg')).toHaveAttribute(
       'src', /^data:image\/png;base64,/);
   });
 

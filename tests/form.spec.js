@@ -39,6 +39,7 @@ async function stubDb(page, { failWith = null, failFirstNTimes = 0 } = {}) {
 
 async function fillStep1(page, overrides = {}) {
   const v = {
+    quote: 'GC-24-175A',
     company: 'Acme Industrial',
     contact: 'Dana Reyes',
     email: 'dana@acme.example',
@@ -49,6 +50,7 @@ async function fillStep1(page, overrides = {}) {
     country: 'Canada',
     ...overrides
   };
+  await page.getByLabel('ToolHound Quote Number *').fill(v.quote);
   await page.getByLabel('Company Name *').fill(v.company);
   await page.getByLabel('Customer Contact Name *').fill(v.contact);
   await page.getByLabel('Customer Contact Email *').fill(v.email);
@@ -96,6 +98,29 @@ test.beforeEach(async ({ page }) => {
   await stubDb(page);
   await page.goto('/index.html');
 });
+
+/**
+ * The document tests all need a submitted order on screen, and every one of
+ * them would otherwise repeat the same four steps. `overrides` reaches whichever
+ * step owns the field.
+ */
+async function gotoForm(page) {
+  await page.goto('/index.html');
+}
+
+async function submitOrder(page, overrides = {}) {
+  const { quantity = '500', seqStart = '1000',
+          authorizedName = 'Dana Reyes', ...step1 } = overrides;
+  await gotoForm(page);
+  await fillStep1(page, step1);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await fillStep2(page, { quantity, seqStart });
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Continue to Authorization' }).click();
+  await fillStep4(page, authorizedName);
+  await page.getByRole('button', { name: 'Submit Order' }).click();
+  await expect(page.getByRole('heading', { name: 'Order Submitted' })).toBeVisible();
+}
 
 test('completes the full order flow and records the submission', async ({ page }) => {
   await fillStep1(page);
@@ -453,16 +478,15 @@ test.describe('confirmation record', () => {
       await expect(page.getByRole('button', { name: 'Print / save a copy' }))
         .toBeVisible();
 
-      // The print block is hidden on screen but carries the full record.
+      // The print block is hidden on screen but carries the full document.
       const print = page.locator('.print-only');
       await expect(print).toBeHidden();
-      await expect(print).toContainText('Label Order Authorization');
+      await expect(print).toContainText('Label Order');
       await expect(print).toContainText('Acme Industrial');
       await expect(print).toContainText('cannot be returned');
       await expect(print).toContainText('Dana Reyes');
-
-      const ref = await page.evaluate(() => window.__TOOLHOUND_FORM__.state.orderRef);
-      await expect(print).toContainText(ref);
+      // The reference on the sheet is the quote number, not the internal ref.
+      await expect(print).toContainText('GC-24-175A');
     });
 
   // The confirmation must not promise an email that nothing sends.
@@ -815,4 +839,117 @@ test.describe('signature: type or draw', () => {
     await page.getByRole('radio', { name: 'Type it' }).check();
     await expect(page.getByLabel('Type your name to sign')).toHaveValue('');
   });
+});
+
+/* ---------------------------------------------------------------------------
+   The label order document
+   This is the sheet the customer signs and Metalcraft works from, so these
+   tests care about what it states rather than how it looks. A wrong value here
+   is a scrapped print run, not a cosmetic bug.
+   --------------------------------------------------------------------------- */
+
+test.describe('label order document', () => {
+  test('the quote number is required, and names itself when missing', async ({ page }) => {
+    await gotoForm(page);
+    await fillStep1(page, { quote: '' });
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.locator('.field', { hasText: 'ToolHound Quote Number' })
+      .locator('.err-msg')).toBeVisible();
+    // And the form has not advanced.
+    await expect(page.getByLabel('Company Name *')).toBeVisible();
+  });
+
+  test('the printed document carries the quote number as the reference',
+    async ({ page }) => {
+      await submitOrder(page, { quote: 'GC-26-175D' });
+      await page.emulateMedia({ media: 'print' });
+      const doc = page.locator('.order-doc');
+      await expect(doc).toHaveCount(1);
+      // Header, reference strip and footer all carry it: the whole point is
+      // that Metalcraft can quote it back from anywhere on the page.
+      await expect(doc.locator('.od-dv', { hasText: 'GC-26-175D' })).toBeVisible();
+      await expect(doc.locator('.od-rv', { hasText: 'GC-26-175D' })).toBeVisible();
+      await expect(doc.locator('.od-foot')).toContainText('GC-26-175D');
+    });
+
+  test('the shipping address is the only address on the sheet', async ({ page }) => {
+    await submitOrder(page);
+    const doc = page.locator('.order-doc');
+    // The customer's address is present and labelled as the ship-to.
+    await expect(doc.locator('.od-shipto')).toContainText('400 Foundry Rd');
+    await expect(doc.locator('.od-shipto')).toContainText('Hamilton');
+    await expect(doc.locator('.od-shipto .od-lab')).toContainText('Ship to');
+    // ToolHound's own postal address is deliberately absent. Ian removed it so
+    // there is exactly one place to ship to on the page.
+    await expect(doc).not.toContainText('Carnegie');
+    await expect(doc).not.toContainText('St Albert');
+  });
+
+  test('correspondence goes to the shared mailboxes, not a person',
+    async ({ page }) => {
+      await submitOrder(page);
+      const doc = page.locator('.order-doc');
+      await expect(doc).toContainText('sales@toolhound.com');
+      await expect(doc).toContainText('accounting@toolhound.com');
+      await expect(doc).not.toContainText('graham.cooper@toolhound.com');
+    });
+
+  test('the sequence splits into prefix, from and to', async ({ page }) => {
+    await submitOrder(page, { seqStart: 'TSG-0001', quantity: '500' });
+    const row = page.locator('.order-doc .od-tbl').last().locator('tbody td');
+    await expect(row.nth(1)).toHaveText('TSG-');
+    await expect(row.nth(2)).toHaveText('0001');
+    // Padding survives the count: 500 labels from TSG-0001 ends TSG-0500, and
+    // dropping the zeros would have the vendor print the wrong labels.
+    await expect(row.nth(3)).toHaveText('0500');
+  });
+
+  test('the die size is stated to four decimals, as the vendor states it',
+    async ({ page }) => {
+      await submitOrder(page);
+      await expect(page.locator('.order-doc .od-tbl').first())
+        .toContainText('1.5000 × 0.7500 in');
+    });
+
+  test('removed fields stay removed', async ({ page }) => {
+    await submitOrder(page);
+    const doc = page.locator('.order-doc');
+    for (const gone of ['Symbology', 'Ship via', 'Required by', 'Order desk']) {
+      await expect(doc).not.toContainText(gone);
+    }
+  });
+
+  test('the customer signature is the only one on the document',
+    async ({ page }) => {
+      await submitOrder(page, { authorizedName: 'Nick Tibbles' });
+      await page.emulateMedia({ media: 'print' });
+      const auth = page.locator('.order-doc .od-auth');
+      await expect(auth.locator('.od-sig')).toHaveCount(3);
+      await expect(auth).toContainText('Nick Tibbles');
+      await expect(auth.locator('.od-sigimg')).toBeVisible();
+      await expect(auth).not.toContainText('Countersigned');
+    });
+
+  test('the sequence split is exercised directly for the awkward shapes',
+    async ({ page }) => {
+      await gotoForm(page);
+      const cases = await page.evaluate(() => {
+        const s = window.TOOLHOUND_ORDER_DOC.splitSequence;
+        return {
+          plain: s('10000', 5000),
+          padded: s('TSG-0001', 500),
+          lettersRun: s('VOL6001', 3000),
+          // A run that outgrows its padding gets longer rather than truncating.
+          outgrows: s('0001', 20000),
+          noDigits: s('ABC', 500),
+          noQuantity: s('1000', '')
+        };
+      });
+      expect(cases.plain).toMatchObject({ prefix: '', from: '10000', to: '14999' });
+      expect(cases.padded).toMatchObject({ prefix: 'TSG-', from: '0001', to: '0500' });
+      expect(cases.lettersRun).toMatchObject({ prefix: 'VOL', from: '6001', to: '9000' });
+      expect(cases.outgrows).toMatchObject({ from: '0001', to: '20000' });
+      expect(cases.noDigits).toMatchObject({ prefix: 'ABC', from: '', to: '' });
+      expect(cases.noQuantity).toMatchObject({ from: '1000', to: '' });
+    });
 });

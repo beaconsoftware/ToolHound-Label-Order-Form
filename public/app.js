@@ -74,6 +74,7 @@
     orderRef: null,
     submittedAt: null,
     data: {
+      quoteNumber: '',
       companyName: '', contactName: '', contactEmail: '',
       address: '', city: '', stateProvince: '', postalCode: '', country: 'Canada',
       logoChoice: '', logoFileName: '', logoFileData: '',
@@ -291,6 +292,14 @@
       return f;
     }
 
+    // The label order document's reference is this number, not the internal
+    // THL- ref, so it leads the form. Graham sends the quote before asking the
+    // customer to fill this in, so they always have it in front of them.
+    add('quoteNumber', 'ToolHound Quote Number *', null, 'e.g. GC-24-175A');
+    card.appendChild(el('div', { class: 'hint', style: 'margin-top:-10px;margin-bottom:16px;' },
+      'On the quote ToolHound sent you. This reference follows the order all '
+      + 'the way through, so it needs to match.'));
+
     add('companyName', 'Company Name *');
     add('contactName', 'Customer Contact Name *');
     add('contactEmail', 'Customer Contact Email *', 'email', 'name@example.com');
@@ -319,8 +328,8 @@
 
     card.appendChild(actionBar(null, 'Continue', function () {
       var ok = true;
-      ['companyName', 'contactName', 'contactEmail', 'address', 'city',
-        'stateProvince', 'postalCode', 'country'].forEach(function (k) {
+      ['quoteNumber', 'companyName', 'contactName', 'contactEmail', 'address',
+        'city', 'stateProvince', 'postalCode', 'country'].forEach(function (k) {
         var blank = isBlank(d[k]);
         if (k === 'contactEmail' && !blank && !isEmail(d[k])) {
           markErr(inputs[k], true, 'Enter a valid email address');
@@ -718,6 +727,7 @@
 
     var b1 = el('div', { class: 'review-block' });
     b1.appendChild(el('h3', {}, 'Customer & Shipping'));
+    b1.appendChild(reviewRow('Quote Number', d.quoteNumber));
     b1.appendChild(reviewRow('Company', d.companyName));
     b1.appendChild(reviewRow('Contact', d.contactName));
     b1.appendChild(reviewRow('Email', d.contactEmail));
@@ -1112,6 +1122,7 @@
   function buildRow(d, orderRef) {
     return {
       order_ref: orderRef,
+      quote_number: d.quoteNumber.trim() ? d.quoteNumber.trim() : null,
       company_name: d.companyName.trim(),
       contact_name: d.contactName.trim(),
       contact_email: d.contactEmail.trim(),
@@ -1284,25 +1295,6 @@
     return box;
   }
 
-  /** Plain-text version of the same sign-off for the printed record. */
-  function contactBlock() {
-    var c = CONFIG.contact || {};
-    var lines = [];
-    if (c.name && c.email) {
-      lines.push('Questions? Contact ' + c.name + ' at ' + c.email);
-    }
-    var reach = [];
-    if (c.phone) reach.push(c.phone);
-    if (c.tollFree) reach.push('Toll Free: ' + c.tollFree);
-    if (c.generalEmail) reach.push('General: ' + c.generalEmail);
-    if (c.website) reach.push(c.website);
-    if (reach.length) lines.push(reach.join(' · '));
-
-    var box = el('div', { style: 'margin-top:16px;font-size:11px;color:var(--ink-soft);' });
-    lines.forEach(function (l) { box.appendChild(el('div', {}, l)); });
-    return box;
-  }
-
   function renderStep5(card) {
     var d = state.data;
 
@@ -1338,49 +1330,32 @@
     s.appendChild(buttons);
     card.appendChild(s);
 
-    // Print view: a standalone record of what was authorized. A custom run is
-    // nonreturnable, so the customer keeps the specifications and the signed
-    // authorization together on one page.
+    // Print view: the label order document itself, which is also what goes to
+    // Metalcraft. The customer keeps the same sheet the supplier works from,
+    // so a custom run that cannot be returned is authorized against exactly
+    // one description of itself rather than two that might disagree.
     var p = el('div', { class: 'print-only' });
-    var header = el('div', { class: 'print-header' }, [
-      el('img', { src: 'toolhound-logo.png', alt: 'ToolHound' }),
-      el('div', { class: 'meta' }, [
-        el('div', { style: 'font-weight:700;color:var(--ink);' },
-          'Label Order Authorization'),
-        el('div', {}, 'Reference: ' + state.orderRef),
-        el('div', {}, 'Submitted: ' + formatTimestamp(state.submittedAt))
-      ])
-    ]);
-    p.appendChild(header);
-    reviewBlocks(d).forEach(function (b) { p.appendChild(b); });
-
-    var auth = el('div', { class: 'review-block' });
-    auth.appendChild(el('h3', {}, 'Authorization'));
-    auth.appendChild(el('div', { class: 'authtext' }, AUTH_TEXT));
-    auth.appendChild(reviewRow('Authorized By', d.authorizedName));
-    auth.appendChild(reviewRow('Approval Date', d.approvalDate));
-    if (d.signatureData) {
-      auth.appendChild(el('div', { class: 'review-row' }, [
-        el('span', { class: 'k' }, 'Signature'),
-        el('img', { src: d.signatureData, class: 'sig-print', alt: 'Signature' })
-      ]));
-    }
-    p.appendChild(auth);
-
-    p.appendChild(contactBlock());
+    p.appendChild(orderDocument(d, {
+      orderRef: state.orderRef,
+      issuedAt: state.submittedAt
+    }));
     card.appendChild(p);
   }
 
-  function formatTimestamp(dt) {
-    if (!dt) return '';
-    try {
-      return dt.toLocaleString(undefined, {
-        year: 'numeric', month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-      });
-    } catch (e) {
-      return dt.toISOString();
+  /**
+   * The order document, rendered by the shared module so the dashboard's
+   * read-back and this printed copy cannot drift. Missing module means a
+   * deploy that dropped order-doc.js, and a silent blank page would be worse
+   * than a visible note.
+   */
+  function orderDocument(d, meta) {
+    var mod = window.TOOLHOUND_ORDER_DOC;
+    if (!mod) {
+      return el('div', { class: 'form-error' },
+        'The order document could not be rendered. Your order was submitted '
+        + 'successfully — reference ' + state.orderRef + '.');
     }
+    return mod.render(mod.fromForm(d, meta));
   }
 
   // ---------------------------------------------------------------------------

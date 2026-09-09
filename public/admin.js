@@ -33,9 +33,6 @@
    */
   var ALLOWED_DOMAINS = ['beaconsoftware.com'];
 
-  // The wording the customer actually agreed to, from config.js -- the same
-  // string the form renders, so the reproduced record is not a paraphrase.
-  var AUTH_TEXT = CONFIG.authText || '';
 
   var STATUSES = [
     { value: 'received', label: 'Received' },
@@ -1003,73 +1000,19 @@
       el('button', { class: 'ghost', onclick: close }, 'Close')
     ]));
 
+    // The same document the customer signed and Metalcraft receives, rendered
+    // by the shared module rather than rebuilt here. Reproducing a signed
+    // document from a second template is how a read-back stops matching the
+    // thing that was signed.
     var doc = el('div', { class: 'record-doc' });
-    doc.appendChild(el('div', { class: 'print-header' }, [
-      el('img', { src: 'toolhound-logo.png', alt: 'ToolHound' }),
-      el('div', { class: 'meta' }, [
-        el('div', { style: 'font-weight:700;color:var(--ink);',
-          text: 'Label Order Authorization' }),
-        el('div', { text: 'Reference: ' + order.order_ref }),
-        el('div', { text: 'Submitted: ' + fmtDateTime(order.submitted_at) })
-      ])
-    ]));
-
-    function block(title, pairs) {
-      var b = el('div', { class: 'review-block' }, [el('h3', { text: title })]);
-      pairs.forEach(function (pr) {
-        if (pr[1] == null || pr[1] === '') return;
-        b.appendChild(el('div', { class: 'review-row' }, [
-          el('span', { class: 'k', text: pr[0] }),
-          el('span', { class: 'v', text: String(pr[1]) })
-        ]));
-      });
-      doc.appendChild(b);
+    var mod = window.TOOLHOUND_ORDER_DOC;
+    if (mod) {
+      doc.appendChild(mod.render(mod.fromRow(order)));
+    } else {
+      doc.appendChild(el('div', { class: 'form-error',
+        text: 'The order document could not be rendered: order-doc.js did not '
+          + 'load. Reload the page; if it persists the deploy is incomplete.' }));
     }
-
-    block('Customer & Shipping', [
-      ['Company', order.company_name],
-      ['Contact', order.contact_name],
-      ['Email', order.contact_email],
-      ['Shipping Address', [order.address, order.city,
-        [order.state_province, order.postal_code].filter(Boolean).join(' '),
-        order.country].filter(Boolean).join(', ')],
-      ['Receiving Contact', order.attention_name],
-      ['Delivery Phone', order.ship_to_phone]
-    ]);
-
-    block('Label Specifications', [
-      ['Logo / Text', labelSpec(order)],
-      ['Logo File', order.logo_file_name],
-      ['Full Colour', order.full_color],
-      ['Label Size', labelSize(order)],
-      ['Quantity', order.quantity],
-      ['Starting Label Number', order.seq_start || order.start_seq],
-      ['Label Number Range', sequenceRange(order)],
-      ['Special Instructions', order.instructions]
-    ]);
-
-    var auth = el('div', { class: 'review-block' }, [el('h3', { text: 'Authorization' })]);
-    auth.appendChild(el('div', { class: 'authtext', text: AUTH_TEXT }));
-    [['Authorized By', order.authorized_name],
-     ['Approval Date', fmtDate(order.approval_date)]].forEach(function (pr) {
-      auth.appendChild(el('div', { class: 'review-row' }, [
-        el('span', { class: 'k', text: pr[0] }),
-        el('span', { class: 'v', text: pr[1] == null || pr[1] === '' ? '—' : String(pr[1]) })
-      ]));
-    });
-    if (order.signature_data) {
-      // Safe to render inline: the database constrains signature_data to a PNG
-      // data URL. Uploaded artwork is not, which is why that only downloads.
-      auth.appendChild(el('div', { class: 'review-row' }, [
-        el('span', { class: 'k', text: 'Signature' }),
-        el('img', {
-          src: order.signature_data,
-          class: 'sig-print',
-          alt: 'Signature of ' + (order.authorized_name || 'the authorizing customer')
-        })
-      ]));
-    }
-    doc.appendChild(auth);
 
     sheet.appendChild(doc);
     overlay.appendChild(sheet);
