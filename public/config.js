@@ -49,9 +49,43 @@ window.TOOLHOUND_CONFIG = {
     ]
   },
 
-  // The stock every label order is printed on, in the supplier's own wording.
-  // One value because one product: if a second stock is ever ordered this
-  // stops being a constant and becomes a field on the order.
+  // The label types ToolHound orders, and the sizes each one comes in.
+  //
+  // This used to be a single constant, on the assumption of one product. The
+  // anodized aluminium circular label ended that: NWT order round aluminium
+  // labels, and 0.625" x 0.625" is not a size the poly pro stock is cut to.
+  //
+  // Size belongs to the type rather than sitting beside it, because the pairing
+  // is the rule. A circular label has exactly one size, so the form states it
+  // rather than offering a choice, and the database enforces the same pairing
+  // in case the form is ever bypassed.
+  //
+  // `docName` is the wording that prints on the document Metalcraft works from,
+  // so it is theirs, not ours. `label` is what the customer picks from.
+  labelTypes: [
+    {
+      value: 'premium_poly_pro',
+      label: '.002" Premium Poly Pro',
+      docName: '.002" Premium Poly Pro barcode label',
+      sizes: [
+        { value: '1.50x0.75', label: '1.50" x 0.75"', w: '1.50', h: '0.75' },
+        { value: '1.25x0.50', label: '1.25" x 0.50"', w: '1.25', h: '0.50' }
+      ]
+    },
+    {
+      value: 'anodized_aluminum_circular',
+      label: '.003" Matte Anodized Aluminum Circular',
+      docName: '.003" Matte Anodized Aluminum Circular label',
+      // One size, stated rather than chosen. Written the way Metalcraft write
+      // it on their own sheet: a circular die, expressed as a square.
+      sizes: [
+        { value: '0.625x0.625', label: '0.625" x 0.625"', w: '0.625', h: '0.625' }
+      ]
+    }
+  ],
+
+  // Wording for an order placed before label type was a field. Every such row
+  // is poly pro, because that was the only stock the form could express.
   labelStock: '.002" Premium Poly Pro barcode label',
 
   // The authorization statement the customer agrees to. It lives here because

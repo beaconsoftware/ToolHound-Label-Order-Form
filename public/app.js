@@ -40,14 +40,29 @@
   };
 
   /**
-   * The only two label sizes in ToolHound's entire Metalcraft order history.
-   * Offering them as a choice rather than a free text box means the common
-   * case is one click and the value that reaches the printer is exact.
+   * Label types and the sizes each is made in, from config.js so that the form,
+   * the printed document and the dashboard describe a type the same way. Size
+   * is nested under type because the pairing is the rule, not a coincidence:
+   * 0.625" x 0.625" is only cut on the circular anodized aluminium stock, and
+   * offering it against poly pro is a way to reach production with a die
+   * Metalcraft does not have.
    */
-  var LABEL_SIZES = [
-    { value: '1.50x0.75', label: '1.50" x 0.75"', w: '1.50', h: '0.75' },
-    { value: '1.25x0.50', label: '1.25" x 0.50"', w: '1.25', h: '0.50' }
-  ];
+  var LABEL_TYPES = (CONFIG.labelTypes || []);
+
+  function labelTypeByValue(v) {
+    return LABEL_TYPES.filter(function (t) { return t.value === v; })[0] || null;
+  }
+
+  function sizesForType(v) {
+    var t = labelTypeByValue(v);
+    return t ? t.sizes : [];
+  }
+
+  function sizeInType(typeValue, sizeValue) {
+    return sizesForType(typeValue).filter(function (s) {
+      return s.value === sizeValue;
+    })[0] || null;
+  }
 
   var MAX_TEXT_LINES = 3;
   // 18, not the 10 the old Microsoft Forms sheet used and this form inherited.
@@ -85,7 +100,7 @@
       textLines: ['', '', ''],
       fullColor: '',
       quantity: '', seqStart: '', instructions: '',
-      labelSizeChoice: '', labelWidthIn: '', labelHeightIn: '',
+      labelType: '', labelSizeChoice: '', labelWidthIn: '', labelHeightIn: '',
       shipToPhone: '', attentionName: '',
       authorizedName: '', approvalDate: new Date().toISOString().slice(0, 10),
       signatureData: '', signatureTypedName: '', signatureMode: 'type'
@@ -266,14 +281,32 @@
   }
 
   /**
+   * Two decimals is not enough: 0.625" rounds to 0.63" and the customer signs
+   * off on a size that is not the one being cut. Render to three and trim, so
+   * 1.50" stays 1.50" and 0.625" stays 0.625".
+   */
+  function inchText(n) {
+    var s = n.toFixed(3).replace(/(\.\d\d)0$/, '$1');
+    return s;
+  }
+
+  /**
    * The printer works from this, and the customer signs off on it, so both
-   * screens have to read the same. One formatter, used by both.
+   * screens have to read the same. One formatter, used by both. The type's own
+   * wording wins where there is one, so the form and config cannot disagree.
    */
   function labelSizeText(d) {
+    var size = sizeInType(d.labelType, d.labelSizeChoice);
+    if (size) return size.label;
     var w = toDecimal(d.labelWidthIn);
     var h = toDecimal(d.labelHeightIn);
     if (w === null || h === null) return '';
-    return w.toFixed(2) + '" x ' + h.toFixed(2) + '"';
+    return inchText(w) + '" x ' + inchText(h) + '"';
+  }
+
+  function labelTypeText(d) {
+    var t = labelTypeByValue(d.labelType);
+    return t ? t.label : '';
   }
 
   function filledTextLines(d) {
@@ -509,6 +542,9 @@
     }
     renderColorField();
 
+    var typeField = labelTypeField();
+    card.appendChild(typeField.wrap);
+
     var sizeField = labelSizeField();
     card.appendChild(sizeField.wrap);
 
@@ -535,21 +571,83 @@
     card.appendChild(row);
 
     /**
+     * Type is asked before size because it decides which sizes exist. Every
+     * stock ToolHound has ever ordered is here; a first-time material is a
+     * conversation with Metalcraft, not a form field.
+     */
+    function labelTypeField() {
+      var wrap = el('fieldset', { class: 'field radio-field' });
+      wrap.appendChild(el('legend', {}, 'Label Type *'));
+
+      var errMsg = el('div', { class: 'err-msg', role: 'alert' },
+        'Please choose a label type');
+
+      var group = radioGroup('labelType', LABEL_TYPES.map(function (t) {
+        return { value: t.value, label: t.label };
+      }), d.labelType, function (v) {
+        d.labelType = v;
+        errMsg.style.display = 'none';
+        // Any size held from the previous type is meaningless against the new
+        // one, so it is dropped rather than carried across.
+        d.labelSizeChoice = '';
+        d.labelWidthIn = '';
+        d.labelHeightIn = '';
+        sizeField.repaint();
+      });
+      wrap.appendChild(group);
+      wrap.appendChild(errMsg);
+
+      return {
+        wrap: wrap,
+        errMsg: errMsg,
+        validate: function () {
+          if (!d.labelType) { errMsg.style.display = 'block'; return false; }
+          return true;
+        }
+      };
+    }
+
+    /**
      * Size drives the line description the printer works from, so it has to be
-     * exact. These two are the only sizes ever ordered, and a free-text entry
-     * was a way to reach production with a size Metalcraft does not stock --
-     * a first-time requirement is a conversation, not a form field.
+     * exact. The options come from the chosen type, so a size can only ever be
+     * one the type is actually made in. Where a type has a single size there is
+     * nothing to choose: the form states it and sets it, which is one less
+     * click and one less thing to get wrong.
      */
     function labelSizeField() {
       var wrap = el('div', { class: 'field' });
       var errMsg = el('div', { class: 'err-msg', role: 'alert' },
         'Please choose a label size');
 
-      var group = el('div', { class: 'choice-group' });
+      var label = el('label', {}, 'Label Size *');
+      var body = el('div', {});
 
       function paint() {
-        group.innerHTML = '';
-        LABEL_SIZES.forEach(function (opt) {
+        body.innerHTML = '';
+        var sizes = sizesForType(d.labelType);
+
+        if (!sizes.length) {
+          body.appendChild(el('div', { class: 'hint' },
+            'Choose a label type first.'));
+          return;
+        }
+
+        if (sizes.length === 1) {
+          var only = sizes[0];
+          // Stated, not offered. Selecting it here keeps validation and the
+          // submitted row identical to the multi-size path.
+          d.labelSizeChoice = only.value;
+          d.labelWidthIn = only.w;
+          d.labelHeightIn = only.h;
+          errMsg.style.display = 'none';
+          body.appendChild(el('div', { class: 'fixed-size' }, only.label));
+          body.appendChild(el('div', { class: 'hint' },
+            labelTypeByValue(d.labelType).label + ' is made in this size only.'));
+          return;
+        }
+
+        var group = el('div', { class: 'choice-group' });
+        sizes.forEach(function (opt) {
           var input = el('input', {
             type: 'radio',
             name: 'labelSize',
@@ -570,18 +668,26 @@
           });
           group.appendChild(choice);
         });
+        body.appendChild(group);
       }
 
-      wrap.appendChild(el('label', {}, 'Label Size *'));
-      wrap.appendChild(group);
+      wrap.appendChild(label);
+      wrap.appendChild(body);
       wrap.appendChild(errMsg);
       paint();
 
       return {
         wrap: wrap,
         errMsg: errMsg,
+        repaint: paint,
         validate: function () {
-          if (!d.labelSizeChoice) { errMsg.style.display = 'block'; return false; }
+          // A size that does not belong to the chosen type never reaches the
+          // supplier, however it got into the state.
+          if (!d.labelType) return false;
+          if (!sizeInType(d.labelType, d.labelSizeChoice)) {
+            errMsg.style.display = 'block';
+            return false;
+          }
           return true;
         }
       };
@@ -679,6 +785,7 @@
       var qtyTarget = qtyField.otherInput.style.display === 'none'
         ? qtyField.select : qtyField.otherInput;
       var qty = toInt(d.quantity);
+      if (!typeField.validate()) ok = false;
       if (!sizeField.validate()) ok = false;
 
       if (qty === null) { markErr(qtyTarget, true, 'Enter a quantity'); ok = false; }
@@ -749,6 +856,7 @@
       b2.appendChild(reviewRow('Custom Text', filledTextLines(d).join(' / ')));
     }
     b2.appendChild(reviewRow('Full Colour', d.fullColor));
+    b2.appendChild(reviewRow('Label Type', labelTypeText(d)));
     b2.appendChild(reviewRow('Label Size', labelSizeText(d)));
     b2.appendChild(reviewRow('Quantity', d.quantity));
     b2.appendChild(reviewRow('Starting Label Number', String(d.seqStart).trim()));
@@ -1142,6 +1250,7 @@
       full_color: d.fullColor,
       quantity: toInt(d.quantity),
       seq_start: d.seqStart.trim(),
+      label_type: d.labelType,
       label_width_in: toDecimal(d.labelWidthIn),
       label_height_in: toDecimal(d.labelHeightIn),
       ship_to_phone: d.shipToPhone.trim() ? d.shipToPhone.trim() : null,

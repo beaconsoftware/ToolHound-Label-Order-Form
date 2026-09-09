@@ -86,7 +86,7 @@
     'address', 'city', 'state_province', 'postal_code', 'country',
     'logo_choice', 'logo_file_name', 'text_lines', 'full_color',
     'quantity', 'start_seq', 'seq_start', 'instructions',
-    'label_width_in', 'label_height_in',
+    'label_type', 'label_width_in', 'label_height_in',
     'ship_to_phone', 'attention_name', 'customer_po',
     'authorized_name', 'approval_date'
   ].join(',');
@@ -229,11 +229,29 @@
     return start + ' – ' + head + end;
   }
 
+  /**
+   * Three decimals, trimmed. At two, 0.625" reads as 0.63" and the drawer
+   * disagrees with the die the labels are actually cut on.
+   */
   function labelSize(order) {
     var w = Number(order.label_width_in);
     var h = Number(order.label_height_in);
     if (!isFinite(w) || !isFinite(h) || !w || !h) return '—';
-    return w.toFixed(2) + '" x ' + h.toFixed(2) + '"';
+    return inches(w) + '" x ' + inches(h) + '"';
+  }
+
+  function inches(n) {
+    return n.toFixed(3).replace(/(\.\d\d)0$/, '$1');
+  }
+
+  function labelTypeText(order) {
+    var types = (window.TOOLHOUND_CONFIG || {}).labelTypes || [];
+    for (var i = 0; i < types.length; i++) {
+      if (types[i].value === order.label_type) return types[i].label;
+    }
+    // Pre-field rows carry no type; all of them are poly pro.
+    return order.label_type
+      || (window.TOOLHOUND_CONFIG || {}).labelStock || '—';
   }
 
   // ---------------------------------------------------------------------------
@@ -352,7 +370,7 @@
     'address', 'city', 'state_province', 'postal_code', 'country',
     'attention_name', 'ship_to_phone', 'customer_po',
     'logo_choice', 'logo_file_name', 'text_lines', 'full_color',
-    'label_width_in', 'label_height_in',
+    'label_type', 'label_width_in', 'label_height_in',
     'quantity', 'seq_start', 'start_seq', 'instructions'
   ];
 
@@ -1091,6 +1109,7 @@
     section('Specification', [
       ['Label', labelSpec(order)],
       ['Full colour', order.full_color],
+      ['Label type', labelTypeText(order)],
       ['Label size', labelSize(order)],
       ['Quantity', order.quantity],
       ['Sequence range', sequenceRange(order)],

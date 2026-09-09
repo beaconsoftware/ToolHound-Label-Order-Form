@@ -133,6 +133,7 @@
       textLines: (d.textLines || []).map(function (l) { return String(l || '').trim(); })
         .filter(function (l) { return l.length > 0; }),
       fullColor: d.fullColor,
+      labelType: d.labelType,
       labelWidthIn: d.labelWidthIn,
       labelHeightIn: d.labelHeightIn,
       quantity: d.quantity,
@@ -162,6 +163,7 @@
       logoFileName: row.logo_file_name,
       textLines: (row.text_lines || []).filter(Boolean),
       fullColor: row.full_color,
+      labelType: row.label_type,
       labelWidthIn: row.label_width_in,
       labelHeightIn: row.label_height_in,
       quantity: row.quantity,
@@ -201,6 +203,17 @@
     }
   }
 
+  /** Supplier-facing wording for a label type value. */
+  function materialText(cfg, labelType) {
+    var types = cfg.labelTypes || [];
+    for (var i = 0; i < types.length; i++) {
+      if (types[i].value === labelType) {
+        return types[i].docName || types[i].label;
+      }
+    }
+    return cfg.labelStock || '';
+  }
+
   /**
    * Build the document. `o` is the normalised shape above; use fromForm or
    * fromRow to produce it.
@@ -209,7 +222,11 @@
     var cfg = (window.TOOLHOUND_CONFIG || {});
     var by = cfg.orderedBy || {};
     var sup = cfg.supplier || {};
-    var stock = cfg.labelStock || '';
+    // The material is whatever type the order carries. Rows written before
+    // label type was a field have none, and every one of those is poly pro
+    // because that was the only stock the form could express; cfg.labelStock
+    // is that wording and nothing else.
+    var stock = materialText(cfg, o.labelType);
 
     // The reference is the quote number. Where an order predates that field
     // the internal reference stands in rather than leaving the sheet unmarked,
