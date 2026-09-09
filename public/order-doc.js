@@ -80,12 +80,41 @@
     };
   }
 
-  /** Metalcraft state their die sizes to four decimals. Match them. */
-  function dieSize(widthIn, heightIn) {
+  /**
+   * Metalcraft state their die sizes to four decimals. Match them.
+   *
+   * A round die is specified by diameter. Stating 0.625" Round as
+   * 0.6250 × 0.6250 in gives the printer the bounding box and calls it the
+   * die, so `shape` is passed through from config and changes the wording.
+   */
+  function dieSize(widthIn, heightIn, shape) {
     var w = parseFloat(widthIn);
     var h = parseFloat(heightIn);
     if (!isFinite(w) || !isFinite(h)) return '';
+    if (shape === 'round') return w.toFixed(4) + ' in dia.';
     return w.toFixed(4) + ' × ' + h.toFixed(4) + ' in';
+  }
+
+  /**
+   * The shape of the die this order's type and size describe. Config is the
+   * only place that knows a size is round, and it is matched on the numbers
+   * rather than a stored flag so that an order written before `shape` existed
+   * still resolves.
+   */
+  function shapeOf(cfg, labelType, widthIn, heightIn) {
+    var types = cfg.labelTypes || [];
+    var w = parseFloat(widthIn);
+    var h = parseFloat(heightIn);
+    for (var i = 0; i < types.length; i++) {
+      if (types[i].value !== labelType) continue;
+      var sizes = types[i].sizes || [];
+      for (var j = 0; j < sizes.length; j++) {
+        if (parseFloat(sizes[j].w) === w && parseFloat(sizes[j].h) === h) {
+          return sizes[j].shape || 'rect';
+        }
+      }
+    }
+    return 'rect';
   }
 
   function groupThousands(n) {
@@ -323,7 +352,8 @@
     var specRow = el('tr', {}, [
       el('td', { class: 'od-m', text: '1' }),
       el('td', { class: 'od-b', text: stock }),
-      el('td', { class: 'od-m', text: dieSize(o.labelWidthIn, o.labelHeightIn) || '—' }),
+      el('td', { class: 'od-m', text: dieSize(o.labelWidthIn, o.labelHeightIn,
+        shapeOf(cfg, o.labelType, o.labelWidthIn, o.labelHeightIn)) || '—' }),
       el('td', { class: 'od-m', text: colourText(o.fullColor) }),
       el('td', { text: seq && seq.from ? 'Yes' : 'No' }),
       el('td', { class: 'od-m od-b od-right', text: groupThousands(o.quantity) })

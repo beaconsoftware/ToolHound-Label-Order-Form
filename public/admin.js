@@ -230,14 +230,33 @@
   }
 
   /**
-   * Three decimals, trimmed. At two, 0.625" reads as 0.63" and the drawer
+   * The stock's own wording for the size wins, so the drawer says 0.625" Round
+   * rather than restating a circular die as a square. Falling back to the raw
+   * numbers covers legacy rows, which carry no type to look the size up under.
+   * Three decimals, trimmed: at two, 0.625" reads as 0.63" and the drawer
    * disagrees with the die the labels are actually cut on.
    */
   function labelSize(order) {
     var w = Number(order.label_width_in);
     var h = Number(order.label_height_in);
     if (!isFinite(w) || !isFinite(h) || !w || !h) return '—';
+    var named = sizeLabel(order.label_type, w, h);
+    if (named) return named;
     return inches(w) + '" x ' + inches(h) + '"';
+  }
+
+  function sizeLabel(labelType, w, h) {
+    var types = (window.TOOLHOUND_CONFIG || {}).labelTypes || [];
+    for (var i = 0; i < types.length; i++) {
+      if (types[i].value !== labelType) continue;
+      var sizes = types[i].sizes || [];
+      for (var j = 0; j < sizes.length; j++) {
+        if (Number(sizes[j].w) === w && Number(sizes[j].h) === h) {
+          return sizes[j].label;
+        }
+      }
+    }
+    return '';
   }
 
   function inches(n) {

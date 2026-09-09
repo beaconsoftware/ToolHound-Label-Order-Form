@@ -74,10 +74,10 @@ const ORDERS = [
     signature_data: null,
     text_lines: ['ACME', 'TOOL'],
     full_color: 'No',
-    // The circular aluminium stock, on the one die it is cut on. 0.625 is here
-    // rather than 0.63 on purpose: this is the value that has to survive the
-    // read back onto the sheet the vendor works from.
-    label_type: 'anodized_aluminum_circular',
+    // The anodized aluminium stock, on its circular die. 0.625 is here rather
+    // than 0.63 on purpose: this is the value that has to survive the read back
+    // onto the sheet the vendor works from.
+    label_type: 'anodized_aluminum_3mil',
     label_width_in: 0.625,
     label_height_in: 0.625,
     quantity: 500,
@@ -681,20 +681,23 @@ test.describe('authorization record', () => {
       'src', /^data:image\/png;base64,/);
   });
 
-  test('states the aluminium stock and its exact die size', async ({ page }) => {
+  test('states the anodized stock and its exact die size', async ({ page }) => {
     await openDashboard(page);
     await page.getByRole('row', { name: /Acme Industrial/ })
       .getByRole('button', { name: 'Details' }).click();
 
     const drawer = page.getByRole('dialog');
-    await expect(drawer).toContainText('.003" Matte Anodized Aluminum Circular');
-    // 0.625, not the 0.63 two decimals would have given.
-    await expect(drawer).toContainText('0.625" x 0.625"');
+    await expect(drawer).toContainText('.003" Matte Anodized Aluminum Foil');
+    // The stock's own wording for the die, not a square restatement of a round
+    // one, and not the 0.63 two decimals would have given.
+    await expect(drawer).toContainText('0.625" Round');
+    await expect(drawer).not.toContainText('0.63"');
 
     await page.getByRole('button', { name: 'View / save as PDF' }).click();
     const record = page.getByRole('dialog', { name: /Authorization record/ });
-    await expect(record).toContainText('.003" Matte Anodized Aluminum Circular label');
-    await expect(record).toContainText('0.6250 × 0.6250 in');
+    await expect(record).toContainText('.003" matte anodized aluminum foil label');
+    // A round die is a diameter, not a bounding box.
+    await expect(record).toContainText('0.6250 in dia.');
   });
 
   test('closes on Escape', async ({ page }) => {
