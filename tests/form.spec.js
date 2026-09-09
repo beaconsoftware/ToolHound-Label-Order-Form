@@ -673,6 +673,105 @@ test.describe('fields the vendor PO needs', () => {
     await expect(page.getByRole('radio', { name: '1.50" x 0.75"' })).toHaveCount(0);
     await expect(page.getByRole('radio', { name: '0.75" x 0.75"' })).toHaveCount(0);
     await expect(page.getByRole('radio', { name: '1.00" x 1.00"' })).toHaveCount(0);
+
+    await page.getByRole('radio', { name: '.002" White Polypropylene' }).check();
+    await expect(page.getByRole('radio', { name: '1.25" x 0.50"' })).toHaveCount(1);
+    await expect(page.getByRole('radio', { name: '0.625" Round' })).toHaveCount(0);
+    await expect(page.getByRole('radio', { name: '1.50" x 0.75"' })).toHaveCount(0);
+  });
+
+  test('submits the white polypropylene stock', async ({ page }) => {
+    await fillStep1(page);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+    await page.getByRole('radio', { name: 'No', exact: true }).check();
+    await page.getByRole('radio', { name: '.002" White Polypropylene' }).check();
+    await page.getByRole('radio', { name: '1.25" x 0.50"' }).check();
+    await fillQuantity(page, '3000');
+    await page.getByLabel('Starting Label Number *').fill('1000');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByText('.002" White Polypropylene').last()).toBeVisible();
+    await page.getByRole('button', { name: 'Continue to Authorization' }).click();
+    await fillStep4(page);
+    await page.getByRole('button', { name: 'Submit Order' }).click();
+
+    const row = (await page.evaluate(() => window.__INSERTED__))[0];
+    expect(row.label_type).toBe('white_polypropylene');
+    expect(row.label_width_in).toBe(1.25);
+    expect(row.label_height_in).toBe(0.5);
+
+    await page.waitForSelector('.order-doc', { state: 'attached' });
+    await page.emulateMedia({ media: 'print' });
+    await expect(page.locator('.order-doc'))
+      .toContainText('.002" white polypropylene label');
+  });
+
+  // 0.625" across leaves nowhere to put a line of text beside the code, so the
+  // combination has to be unreachable rather than merely discouraged.
+  test.describe('no text on the round die', () => {
+    async function toStep2(page) {
+      await fillStep1(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+    }
+
+    test('the round size is blocked while custom text is the artwork',
+      async ({ page }) => {
+        await toStep2(page);
+        await page.getByRole('radio', { name: 'Custom Text' }).check();
+        await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
+
+        const round = page.getByRole('radio', { name: '0.625" Round' });
+        await expect(round).toBeDisabled();
+        await expect(page.getByText('No room for text on this label')).toBeVisible();
+        // The sizes that can carry text are unaffected.
+        await expect(page.getByRole('radio', { name: '1.25" x 0.50"' })).toBeEnabled();
+        await expect(page.getByRole('radio', { name: '1.50" x 0.50"' })).toBeEnabled();
+      });
+
+    test('choosing custom text drops a round size already selected',
+      async ({ page }) => {
+        await toStep2(page);
+        // Round first, text second: the order a customer would actually hit it
+        // in, since the artwork question sits above the size.
+        await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+        await page.getByRole('radio', { name: 'No', exact: true }).check();
+        await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
+        await page.getByRole('radio', { name: '0.625" Round' }).check();
+        await expect(page.getByRole('radio', { name: '0.625" Round' })).toBeChecked();
+
+        await page.getByRole('radio', { name: 'Custom Text' }).check();
+        await expect(page.getByRole('radio', { name: '0.625" Round' })).toBeDisabled();
+        await expect(page.getByRole('radio', { name: '0.625" Round' })).not.toBeChecked();
+
+        // And it cannot be continued past without picking a size that fits.
+        await page.getByLabel('Text line 1').fill('ACME');
+        await fillQuantity(page, '500');
+        await page.getByLabel('Starting Label Number *').fill('1');
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await expect(page.getByText('Please choose a label size')).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Label Specifications' }))
+          .toBeVisible();
+      });
+
+    test('a logo on the round die is still fine', async ({ page }) => {
+      await toStep2(page);
+      await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+      await page.getByRole('radio', { name: 'No', exact: true }).check();
+      await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
+      await page.getByRole('radio', { name: '0.625" Round' }).check();
+      await fillQuantity(page, '500');
+      await page.getByLabel('Starting Label Number *').fill('1');
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await page.getByRole('button', { name: 'Continue to Authorization' }).click();
+      await fillStep4(page);
+      await page.getByRole('button', { name: 'Submit Order' }).click();
+
+      const row = (await page.evaluate(() => window.__INSERTED__))[0];
+      expect(row.label_type).toBe('anodized_aluminum_3mil');
+      expect(row.label_width_in).toBe(0.625);
+      expect(row.text_lines).toBeNull();
+    });
   });
 
   // 0.625 is the reason label_width_in had to move off numeric(5,2). If it ever

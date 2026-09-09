@@ -72,8 +72,18 @@ window.TOOLHOUND_CONFIG = {
   // orange poly label (NWT FMD, March 2024) is also a one-off, but it is a
   // stocked size on a stocked material, so it stays.
   //
+  // UNRESOLVED, and worth resolving: `.002" White Polypropylene` and `.002"
+  // Premium Poly Pro` are both .002" polypropylene and both offered at
+  // 1.25" x 0.50". They are almost certainly the same physical stock under two
+  // names on Metalcraft's paperwork, in which case identical orders will split
+  // across two type values and the cost-over-time and COGS work later has to
+  // reconcile them. Both are here because Ian asked for both; if Metalcraft
+  // confirm they are one stock, merge them and keep the name Metalcraft use.
+  //
   // `docName` is the wording that prints on the document Metalcraft works from,
   // so it is theirs, not ours. `label` is what the customer picks from.
+  // `allowsText: false` marks a size with no room for a line of text, which
+  // takes the Custom Text artwork option off the table for that size.
   // `shape: 'round'` marks a circular die, which is specified by diameter --
   // stating a round label as width x height would have the printer reading the
   // bounding box as the die.
@@ -91,6 +101,16 @@ window.TOOLHOUND_CONFIG = {
       ]
     },
     {
+      value: 'white_polypropylene',
+      label: '.002" White Polypropylene',
+      docName: '.002" white polypropylene label',
+      // Only the one size has been seen on Metalcraft paperwork under this
+      // name. See the note above about the overlap with Premium Poly Pro.
+      sizes: [
+        { value: '1.25x0.50', label: '1.25" x 0.50"', w: '1.25', h: '0.50' }
+      ]
+    },
+    {
       value: 'anodized_aluminum_3mil',
       label: '.003" Anodized Aluminum Foil',
       // No finish in the name. Matte is what Metalcraft have supplied and what
@@ -102,8 +122,12 @@ window.TOOLHOUND_CONFIG = {
         { value: '1.25x0.50', label: '1.25" x 0.50"', w: '1.25', h: '0.50' },
         { value: '1.50x0.50', label: '1.50" x 0.50"', w: '1.50', h: '0.50' },
         // The circular die. Invoiced as 0.625" Round, so that is what it says.
+        // 0.625" across leaves no room for a line of text next to the code, so
+        // this size takes artwork only. `allowsText: false` is read by the form
+        // and mirrored by a check constraint, because a text-only round label
+        // is an order Metalcraft cannot make.
         { value: '0.625round', label: '0.625" Round', w: '0.625', h: '0.625',
-          shape: 'round' }
+          shape: 'round', allowsText: false }
       ]
     }
   ],
