@@ -510,6 +510,8 @@ button.danger-outline:hover{border-color:#C0392B;background:#fdf6f5;}
     overflow:visible;
   }
   body.printing-record .record-actions{display:none !important;}
+  /* The document supplies the page inset itself, because @page has no margin
+     for the browser to draw a header into. */
   body.printing-record .record-doc{padding:0;}
 }
 
