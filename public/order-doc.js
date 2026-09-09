@@ -393,7 +393,7 @@
       el('th', { text: 'Die size' }),
       el('th', { text: 'Colours' }),
       el('th', { text: 'Serialised' }),
-      el('th', { class: 'od-right', text: 'Quantity' })
+      el('th', { text: 'Quantity' })
     ]);
     var seq = splitSequence(o.seqStart, o.quantity);
     var specRow = el('tr', {}, [
@@ -403,7 +403,7 @@
         shapeOf(cfg, o.labelType, o.labelWidthIn, o.labelHeightIn)) || '—' }),
       el('td', { class: 'od-m', text: colourText(o.fullColor) }),
       el('td', { text: seq && seq.from ? 'Yes' : 'No' }),
-      el('td', { class: 'od-m od-b od-right', text: groupThousands(o.quantity) })
+      el('td', { class: 'od-m od-b', text: groupThousands(o.quantity) })
     ]);
     doc.appendChild(el('table', { class: 'od-tbl' }, [
       el('thead', {}, specHead),
@@ -418,7 +418,7 @@
       el('th', { text: 'From' }),
       el('th', { text: 'To' }),
       el('th', { text: 'Suffix' }),
-      el('th', { class: 'od-right', text: 'Count' })
+      el('th', { text: 'Count' })
     ]);
     var seqRow = el('tr', {}, [
       el('td', { class: 'od-m', text: '1' }),
@@ -426,7 +426,7 @@
       el('td', { class: 'od-m od-b', text: seq && seq.from ? seq.from : '—' }),
       el('td', { class: 'od-m od-b', text: seq && seq.to ? seq.to : '—' }),
       el('td', { class: 'od-m', text: seq && seq.suffix ? seq.suffix : '—' }),
-      el('td', { class: 'od-m od-right',
+      el('td', { class: 'od-m',
         text: seq && seq.count ? groupThousands(seq.count) : '—' })
     ]);
     doc.appendChild(el('table', { class: 'od-tbl' }, [
