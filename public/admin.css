@@ -394,6 +394,15 @@ button.link:hover{color:var(--red-dark);}
 /* Two ways out of the record: printed, or pasted into an email. */
 .record-buttons{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 
+/* Which of the two documents is open. Two sheets that differ by what they
+   omit are easy to confuse, so the modal says which one you are looking at. */
+.record-which{
+  margin-right:auto;
+  font-size:13px;
+  font-weight:600;
+  color:var(--ink-soft);
+}
+
 .record-doc{padding:24px 28px 30px;}
 .record-doc .review-block:first-of-type{margin-top:4px;}
 /* styles.css only dresses .print-header inside @media print, because on the

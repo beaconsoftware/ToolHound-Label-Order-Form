@@ -658,7 +658,7 @@ test.describe('authorization record', () => {
   test('reproduces the signed document, signature included', async ({ page }) => {
     await openDashboard(page);
     await page.getByRole('button', { name: 'Details' }).first().click();
-    await page.getByRole('button', { name: 'View / save as PDF' }).click();
+    await page.getByRole('button', { name: 'View signed record' }).click();
 
     const record = page.getByRole('dialog', { name: /Authorization record/ });
     await expect(record).toBeVisible();
@@ -693,7 +693,7 @@ test.describe('authorization record', () => {
     await expect(drawer).toContainText('0.625" Round');
     await expect(drawer).not.toContainText('0.63"');
 
-    await page.getByRole('button', { name: 'View / save as PDF' }).click();
+    await page.getByRole('button', { name: 'View signed record' }).click();
     const record = page.getByRole('dialog', { name: /Authorization record/ });
     await expect(record).toContainText('.003" anodized aluminum foil label');
     // A round die is a diameter, not a bounding box.
@@ -745,8 +745,10 @@ test.describe('authorization record', () => {
       expect(flavour).toContain('Acme Industrial');
       expect(flavour).toContain('0.6250 in dia.');
       expect(flavour).toContain('ACME');
-      // The standing instruction, which the vendor acts on.
-      expect(flavour).toContain('Send a proof for customer approval');
+      // ToolHound's proof and invoice routing is not the supplier's business,
+      // so the email carries the specification and the customer's notes only.
+      expect(flavour).not.toContain('Send a proof for customer approval');
+      expect(flavour).not.toContain('Invoice to');
     }
     expect(clip['text/html']).toContain('.003&quot; anodized aluminum foil label');
     expect(clip['text/plain']).toContain('.003" anodized aluminum foil label');
@@ -759,13 +761,78 @@ test.describe('authorization record', () => {
   test('closes on Escape', async ({ page }) => {
     await openDashboard(page);
     await page.getByRole('button', { name: 'Details' }).first().click();
-    await page.getByRole('button', { name: 'View / save as PDF' }).click();
+    await page.getByRole('button', { name: 'View signed record' }).click();
     await expect(page.getByRole('dialog', { name: /Authorization record/ })).toBeVisible();
 
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: /Authorization record/ })).toHaveCount(0);
     // The drawer underneath survives, so Escape reads as "back", not "quit".
     await expect(page.getByRole('dialog')).toBeVisible();
+  });
+
+  // Two documents from one template. What separates them is what the vendor
+  // copy leaves out, so that is what is asserted.
+  test('the vendor copy omits proof routing, invoicing and the authorisation',
+    async ({ page }) => {
+      await openDashboard(page);
+      await page.getByRole('button', { name: 'Details' }).first().click();
+      await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+
+      const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
+      await expect(vendorCopy).toBeVisible();
+
+      // The specification still has to be all there.
+      await expect(vendorCopy.locator('.order-doc')).toHaveCount(1);
+      await expect(vendorCopy).toContainText('Northgate Mining');
+      await expect(vendorCopy).toContainText('Label specification');
+      await expect(vendorCopy).toContainText('Sequence');
+      await expect(vendorCopy).toContainText('Artwork');
+
+      // None of ToolHound's own process reaches the supplier.
+      await expect(vendorCopy).not.toContainText('Proof to');
+      await expect(vendorCopy).not.toContainText('Invoice to');
+      await expect(vendorCopy).not.toContainText('Required before production');
+      await expect(vendorCopy).not.toContainText('Customer authorisation');
+      await expect(vendorCopy).not.toContainText('cannot be returned once');
+      await expect(vendorCopy).not.toContainText('Instructions to supplier');
+      await expect(vendorCopy.locator('img.od-sigimg')).toHaveCount(0);
+
+      // The correspondence block stays: the supplier still needs to know who
+      // ordered and where to reach them. What went is the routing that told
+      // them what to do with a proof and an invoice.
+      await expect(vendorCopy).toContainText('All correspondence');
+      await expect(vendorCopy).toContainText('accounting@toolhound.com');
+    });
+
+  // The customer's own notes are how the labels get made, so they survive the
+  // cut that removes ToolHound's process language.
+  test('the vendor copy keeps the customer instructions', async ({ page }) => {
+    await openDashboard(page);
+    // Northgate's order carries a real manufacturing note.
+    await page.getByRole('button', { name: 'Details' }).first().click();
+    await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+
+    const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
+    await expect(vendorCopy).toContainText('Special instructions');
+    await expect(vendorCopy).toContainText('Match the orange from our helmets.');
+    // But not the standing paragraph it used to be bundled with.
+    await expect(vendorCopy).not.toContainText('quote our reference');
+  });
+
+  // Nothing is deleted, only withheld from one of the two documents.
+  test('the signed authorisation is still kept and viewable', async ({ page }) => {
+    await openDashboard(page);
+    await page.getByRole('button', { name: 'Details' }).first().click();
+    await page.getByRole('button', { name: 'View signed record' }).click();
+
+    const record = page.getByRole('dialog', { name: /Authorization record/ });
+    await expect(record).toContainText('Customer authorisation');
+    await expect(record).toContainText('cannot be returned once the approved order');
+    await expect(record.locator('img.od-sigimg')).toHaveAttribute(
+      'src', /^data:image\/png;base64,/);
+    // And the proof and invoice routing, which is internal rather than secret.
+    await expect(record).toContainText('Proof to');
+    await expect(record).toContainText('Invoice to');
   });
 });
 
@@ -852,9 +919,12 @@ test.describe('row actions', () => {
     await page.locator('tr.row').first()
       .getByRole('button', { name: 'PDF', exact: true }).click();
 
-    const record = page.getByRole('dialog', { name: /Authorization record/ });
+    // The row button is the one used to send an order out, so it opens the
+    // vendor copy rather than the signed record.
+    const record = page.getByRole('dialog', { name: /Vendor copy/ });
     await expect(record).toBeVisible();
     await expect(record).toContainText('THL-AAAA-BBBBBB');
+    await expect(record).not.toContainText('Customer authorisation');
     await expect.poll(() => page.evaluate(() => window.__PRINTS__)).toBe(1);
   });
 

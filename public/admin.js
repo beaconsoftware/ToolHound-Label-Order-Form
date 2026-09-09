@@ -106,6 +106,7 @@
     query: '',
     drawerId: null,
     recordId: null,
+    recordAudience: 'vendor',
     confirmDeleteId: null,
     loadError: '',
     rowErrors: {},      // order id -> message
@@ -778,8 +779,15 @@
   }
 
   /** Open the authorization record, optionally going straight to print. */
-  function openRecord(order, andPrint) {
+  /**
+   * `audience` decides which document opens: 'vendor' is the sheet that goes to
+   * Metalcraft, 'record' is the signed customer authorisation kept internally.
+   * The authorisation is never dropped from the database or from this page --
+   * it just does not belong in front of the supplier.
+   */
+  function openRecord(order, andPrint, audience) {
     state.recordId = order.id;
+    state.recordAudience = audience === 'record' ? 'record' : 'vendor';
     render();
     if (andPrint) printOpenRecord();
   }
@@ -1115,7 +1123,7 @@
     var pdfBtn = el('button', {
       title: 'Open the signed authorization record and print or save it as a PDF'
     }, 'PDF');
-    pdfBtn.addEventListener('click', function () { openRecord(order, true); });
+    pdfBtn.addEventListener('click', function () { openRecord(order, true, 'vendor'); });
     wrap.appendChild(pdfBtn);
 
     var detailsBtn = el('button', { title: 'Open the full order' }, 'Details');
@@ -1145,26 +1153,32 @@
       onclick: function (e) { if (e.target === overlay) close(); }
     });
 
+    var vendor = state.recordAudience !== 'record';
+    var title = vendor
+      ? 'Vendor copy for ' + order.order_ref
+      : 'Authorization record for ' + order.order_ref;
+
     var sheet = el('div', {
       class: 'record-sheet',
       role: 'dialog',
-      'aria-label': 'Authorization record for ' + order.order_ref
+      'aria-label': title
     });
 
     sheet.appendChild(el('div', { class: 'record-actions' }, [
+      el('span', { class: 'record-which no-print', text: title }),
       el('button', { class: 'primary', onclick: printOpenRecord },
         'Print / save as PDF'),
       el('button', { class: 'ghost', onclick: close }, 'Close')
     ]));
 
-    // The same document the customer signed and Metalcraft receives, rendered
-    // by the shared module rather than rebuilt here. Reproducing a signed
-    // document from a second template is how a read-back stops matching the
-    // thing that was signed.
+    // Rendered by the shared module rather than rebuilt here. Reproducing a
+    // signed document from a second template is how a read-back stops matching
+    // the thing that was signed.
     var doc = el('div', { class: 'record-doc' });
     var mod = window.TOOLHOUND_ORDER_DOC;
     if (mod) {
-      doc.appendChild(mod.render(mod.fromRow(order)));
+      doc.appendChild(mod.render(mod.fromRow(order),
+        { audience: vendor ? 'vendor' : 'record' }));
     } else {
       doc.appendChild(el('div', { class: 'form-error',
         text: 'The order document could not be rendered: order-doc.js did not '
@@ -1333,21 +1347,34 @@
     }, 'Copy for email');
 
     drawer.appendChild(el('div', { class: 'review-block' }, [
-      el('h3', { text: 'Authorization record' }),
+      el('h3', { text: 'Send to Metalcraft' }),
       el('div', { class: 'record-buttons' }, [
         el('button', {
           class: 'primary',
-          onclick: function () { openRecord(order, false); }
-        }, 'View / save as PDF'),
+          onclick: function () { openRecord(order, false, 'vendor'); }
+        }, 'Vendor copy / PDF'),
         emailBtn
       ]),
       el('div', {
         class: 'artwork-note',
-        text: 'The document the customer reviewed and signed, exactly as they '
-          + 'saw it. Print it to save a PDF copy, or copy it for an email to '
-          + 'Metalcraft.'
+        text: 'The specification only: no proof or invoice routing and no '
+          + 'signed authorisation, because none of that is the supplier\u2019s '
+          + 'to act on.'
       }),
       emailStatus
+    ]));
+
+    drawer.appendChild(el('div', { class: 'review-block' }, [
+      el('h3', { text: 'Authorization record' }),
+      el('button', {
+        onclick: function () { openRecord(order, false, 'record'); }
+      }, 'View signed record'),
+      el('div', {
+        class: 'artwork-note',
+        text: 'Kept internally: the document the customer reviewed and signed, '
+          + 'exactly as they saw it, including the signature. This is the '
+          + 'evidence that a nonreturnable order was authorised.'
+      })
     ]));
 
     // Deleting removes a signed authorization and there is no undo, so it sits
