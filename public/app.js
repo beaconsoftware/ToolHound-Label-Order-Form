@@ -63,6 +63,16 @@
     })[0] || null;
   }
 
+  /**
+   * A size with no room for a line of text takes only artwork. The 0.625" round
+   * anodized die is the case: there is nowhere to put text beside the code, so
+   * a text order on that die is one Metalcraft cannot make. Absent flag means
+   * text is fine, so only the sizes that say otherwise are restricted.
+   */
+  function sizeAllowsText(size) {
+    return !size || size.allowsText !== false;
+  }
+
   var MAX_TEXT_LINES = 3;
   // 18, not the 10 the old Microsoft Forms sheet used and this form inherited.
   // Must match label_text_lines_valid() in the database, which 0012 widened;
@@ -400,6 +410,9 @@
         logoField._errMsg.style.display = 'none';
         renderConditional();
         renderColorField();
+        // Artwork choice gates which sizes are available, so the size field has
+        // to be repainted even though it sits below this one.
+        sizeField.repaint();
       });
     card.appendChild(logoField);
     card.appendChild(conditional);
@@ -629,19 +642,42 @@
           return;
         }
 
+        var wantsText = d.logoChoice === 'custom_text';
+
+        // A size that cannot carry text stops being selectable the moment
+        // custom text is the artwork. If it was already selected, it is dropped
+        // rather than left as a choice that would fail validation later with no
+        // visible reason.
+        if (wantsText && d.labelSizeChoice
+            && !sizeAllowsText(sizeInType(d.labelType, d.labelSizeChoice))) {
+          d.labelSizeChoice = '';
+          d.labelWidthIn = '';
+          d.labelHeightIn = '';
+        }
+
         var group = el('div', { class: 'choice-group' });
         sizes.forEach(function (opt) {
+          var blocked = wantsText && !sizeAllowsText(opt);
           var input = el('input', {
             type: 'radio',
             name: 'labelSize',
             value: opt.value,
-            id: 'size_' + opt.value
+            id: 'size_' + opt.value,
+            disabled: blocked
           });
           if (d.labelSizeChoice === opt.value) input.checked = true;
           var choice = el('label', {
-            class: 'choice' + (d.labelSizeChoice === opt.value ? ' selected' : ''),
+            class: 'choice'
+              + (d.labelSizeChoice === opt.value ? ' selected' : '')
+              + (blocked ? ' is-blocked' : ''),
             for: 'size_' + opt.value
           }, [input, el('span', { class: 'clabel' }, opt.label)]);
+          // Shown rather than hidden: a customer who wanted this size needs to
+          // know why it is unavailable, not wonder where it went.
+          if (blocked) {
+            choice.appendChild(el('span', { class: 'choice-note' },
+              'No room for text on this label'));
+          }
           input.addEventListener('change', function () {
             d.labelSizeChoice = opt.value;
             d.labelWidthIn = opt.w;
@@ -652,6 +688,12 @@
           group.appendChild(choice);
         });
         body.appendChild(group);
+
+        if (wantsText && sizes.filter(function (o) { return !sizeAllowsText(o); }).length) {
+          body.appendChild(el('div', { class: 'hint' },
+            'Some sizes are too small to print a line of text beside the code. '
+            + 'To order one of those, choose a logo instead of custom text.'));
+        }
       }
 
       wrap.appendChild(label);
@@ -667,7 +709,16 @@
           // A size that does not belong to the chosen type never reaches the
           // supplier, however it got into the state.
           if (!d.labelType) return false;
-          if (!sizeInType(d.labelType, d.labelSizeChoice)) {
+          var size = sizeInType(d.labelType, d.labelSizeChoice);
+          if (!size) {
+            errMsg.textContent = 'Please choose a label size';
+            errMsg.style.display = 'block';
+            return false;
+          }
+          if (d.logoChoice === 'custom_text' && !sizeAllowsText(size)) {
+            errMsg.textContent =
+              'There is no room for text on a ' + size.label + ' label. '
+              + 'Choose a larger size, or a logo instead of custom text.';
             errMsg.style.display = 'block';
             return false;
           }

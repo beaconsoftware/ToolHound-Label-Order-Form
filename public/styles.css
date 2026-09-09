@@ -208,6 +208,21 @@
   .choice input{margin:0;accent-color:var(--red);flex:none;}
   .choice .clabel{font-size:14.5px;font-weight:500;}
 
+  /* A size the chosen artwork cannot go on. Shown, not hidden, so the reason
+     is visible; the note sits on the right where the char counters do. */
+  .choice.is-blocked{
+    cursor:not-allowed;
+    opacity:.55;
+    background:var(--cream);
+  }
+  .choice.is-blocked:hover{border-color:var(--line);}
+  .choice-note{
+    margin-left:auto;
+    font-size:11.5px;
+    color:var(--ink-soft);
+    text-align:right;
+  }
+
   .yn{display:flex;gap:10px;}
   .yn .choice{flex:1;justify-content:center;}
 
