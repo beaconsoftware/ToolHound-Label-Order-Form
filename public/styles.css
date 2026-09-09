@@ -208,6 +208,17 @@
   .choice input{margin:0;accent-color:var(--red);flex:none;}
   .choice .clabel{font-size:14.5px;font-weight:500;}
 
+  /* A type made in one size has nothing to choose. It is stated in the shape
+     of a settled value, not an option, so nobody hunts for a second box. */
+  .fixed-size{
+    border:1.5px solid var(--line);
+    border-radius:10px;
+    padding:12px 14px;
+    background:var(--cream);
+    font-size:14.5px;
+    font-weight:600;
+  }
+
   .yn{display:flex;gap:10px;}
   .yn .choice{flex:1;justify-content:center;}
 

@@ -80,6 +80,7 @@ async function fillStep2(page, { quantity = '500', seqStart = '1000' } = {}) {
   await page.getByRole('radio', { name: 'Yes', exact: true }).check();
   await fillQuantity(page, quantity);
   await page.getByLabel('Starting Label Number *').fill(seqStart);
+  await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
   await page.getByRole('radio', { name: '1.50" x 0.75"' }).check();
 }
 
@@ -212,6 +213,7 @@ test.describe('step 2 validation', () => {
     async ({ page }) => {
       await page.getByRole('radio', { name: 'Custom Logo' }).check();
       await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+      await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
       await page.getByRole('radio', { name: '1.50" x 0.75"' }).check();
       await fillQuantity(page, '100');
       await page.getByLabel('Starting Label Number *').fill('1');
@@ -355,6 +357,7 @@ test.describe('step 2 validation', () => {
       await expect(page.getByText('Selected: acme-mark.png')).toBeVisible();
 
       await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+      await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
       await page.getByRole('radio', { name: '1.50" x 0.75"' }).check();
       await fillQuantity(page, '100');
       await page.getByLabel('Starting Label Number *').fill('1');
@@ -378,6 +381,7 @@ test.describe('custom text orders', () => {
     await page.getByRole('radio', { name: 'Custom Text' }).check();
     await page.getByLabel('Text line 1').fill('ACME');
     await page.getByLabel('Text line 3').fill('YARD 4');
+    await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
     await page.getByRole('radio', { name: '1.25" x 0.50"' }).check();
     await fillQuantity(page, '75');
     await page.getByLabel('Starting Label Number *').fill('0');
@@ -549,6 +553,7 @@ test.describe('fields the vendor PO needs', () => {
 
       await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
       await page.getByRole('radio', { name: 'No', exact: true }).check();
+      await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
       await page.getByRole('radio', { name: '1.25" x 0.50"' }).check();
       await fillQuantity(page, '3000');
       await page.getByLabel('Starting Label Number *').fill('vol6001');
@@ -615,6 +620,7 @@ test.describe('fields the vendor PO needs', () => {
 
     await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
     await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+    await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
     await fillQuantity(page, '500');
     await page.getByLabel('Starting Label Number *').fill('1');
     await page.getByRole('button', { name: 'Continue' }).click();
@@ -623,14 +629,100 @@ test.describe('fields the vendor PO needs', () => {
     await expect(page.getByRole('heading', { name: 'Label Specifications' })).toBeVisible();
   });
 
-  // Only the two stocked sizes are offered. A free-text size was a way to
-  // reach production with something Metalcraft does not carry.
-  test('offers only the two stocked sizes', async ({ page }) => {
+  test('will not continue without a label type', async ({ page }) => {
     await fillStep1(page);
     await page.getByRole('button', { name: 'Continue' }).click();
+
+    await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+    await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+    await fillQuantity(page, '500');
+    await page.getByLabel('Starting Label Number *').fill('1');
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await expect(page.getByText('Please choose a label type')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Label Specifications' })).toBeVisible();
+  });
+
+  // Only stocked sizes are offered, and only against the stock they belong to.
+  // A free-text size was a way to reach production with something Metalcraft
+  // does not carry; a size shown against the wrong stock is the same problem
+  // wearing a dropdown.
+  test('offers only the sizes the chosen stock is made in', async ({ page }) => {
+    await fillStep1(page);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    // No type chosen yet: nothing to pick from, and the form says why.
+    await expect(page.getByRole('radio', { name: '1.50" x 0.75"' })).toHaveCount(0);
+    await expect(page.getByText('Choose a label type first.')).toBeVisible();
+
+    await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
     await expect(page.getByRole('radio', { name: 'Another size' })).toHaveCount(0);
     await expect(page.getByRole('radio', { name: '1.50" x 0.75"' })).toHaveCount(1);
     await expect(page.getByRole('radio', { name: '1.25" x 0.50"' })).toHaveCount(1);
+    await expect(page.getByRole('radio', { name: '0.625" x 0.625"' })).toHaveCount(0);
+  });
+
+  // The circular aluminium is cut on one die. There is nothing to choose, so
+  // the form states the size instead of offering it.
+  test('states the single size for anodized aluminium and offers no choice',
+    async ({ page }) => {
+      await fillStep1(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+
+      await page.getByRole('radio', { name: 'Matte Anodized Aluminum Circular' }).check();
+      await expect(page.locator('.fixed-size')).toHaveText('0.625" x 0.625"');
+      await expect(page.getByRole('radio', { name: '0.625" x 0.625"' })).toHaveCount(0);
+      await expect(page.getByRole('radio', { name: '1.50" x 0.75"' })).toHaveCount(0);
+      await expect(page.getByRole('radio', { name: '1.25" x 0.50"' })).toHaveCount(0);
+    });
+
+  // 0.625 is the reason label_width_in had to move off numeric(5,2). If it ever
+  // arrives as 0.63 the vendor cuts to the wrong die, so the submitted row is
+  // asserted exactly.
+  test('submits the anodized aluminium size at full precision', async ({ page }) => {
+    await fillStep1(page);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+    await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+    await page.getByRole('radio', { name: 'Matte Anodized Aluminum Circular' }).check();
+    await fillQuantity(page, '500');
+    await page.getByLabel('Starting Label Number *').fill('TSG-0001');
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await expect(page.getByText('.003" Matte Anodized Aluminum Circular').last())
+      .toBeVisible();
+    await expect(page.getByText('0.625" x 0.625"').last()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Continue to Authorization' }).click();
+    await fillStep4(page);
+    await page.getByRole('button', { name: 'Submit Order' }).click();
+
+    const row = (await page.evaluate(() => window.__INSERTED__))[0];
+    expect(row.label_type).toBe('anodized_aluminum_circular');
+    expect(row.label_width_in).toBe(0.625);
+    expect(row.label_height_in).toBe(0.625);
+  });
+
+  // Switching stock drops the size rather than carrying it across, so a poly
+  // pro die cannot ride along on an aluminium order.
+  test('clears the chosen size when the label type changes', async ({ page }) => {
+    await fillStep1(page);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+    await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+    await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
+    await page.getByRole('radio', { name: '1.25" x 0.50"' }).check();
+    await page.getByRole('radio', { name: 'Matte Anodized Aluminum Circular' }).check();
+    await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
+
+    await expect(page.getByRole('radio', { name: '1.25" x 0.50"' })).not.toBeChecked();
+
+    await fillQuantity(page, '500');
+    await page.getByLabel('Starting Label Number *').fill('1');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByText('Please choose a label size')).toBeVisible();
   });
 });
 

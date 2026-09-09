@@ -74,6 +74,12 @@ const ORDERS = [
     signature_data: null,
     text_lines: ['ACME', 'TOOL'],
     full_color: 'No',
+    // The circular aluminium stock, on the one die it is cut on. 0.625 is here
+    // rather than 0.63 on purpose: this is the value that has to survive the
+    // read back onto the sheet the vendor works from.
+    label_type: 'anodized_aluminum_circular',
+    label_width_in: 0.625,
+    label_height_in: 0.625,
     quantity: 500,
     start_seq: 1000,
     instructions: null,
@@ -665,11 +671,30 @@ test.describe('authorization record', () => {
     await expect(record).toContainText('Label specification');
     await expect(record).toContainText('Sequence');
     await expect(record).toContainText('Customer authorisation');
+    // No label_type on this row: it predates the column, and every such order
+    // is poly pro, so the material still has to be stated.
+    await expect(record).toContainText('.002" Premium Poly Pro barcode label');
     // The wording actually agreed to, shared through config.js.
     await expect(record).toContainText('cannot be returned once the approved order');
     // The signature is a PNG, which is why it is safe to show inline.
     await expect(record.locator('img.od-sigimg')).toHaveAttribute(
       'src', /^data:image\/png;base64,/);
+  });
+
+  test('states the aluminium stock and its exact die size', async ({ page }) => {
+    await openDashboard(page);
+    await page.getByRole('row', { name: /Acme Industrial/ })
+      .getByRole('button', { name: 'Details' }).click();
+
+    const drawer = page.getByRole('dialog');
+    await expect(drawer).toContainText('.003" Matte Anodized Aluminum Circular');
+    // 0.625, not the 0.63 two decimals would have given.
+    await expect(drawer).toContainText('0.625" x 0.625"');
+
+    await page.getByRole('button', { name: 'View / save as PDF' }).click();
+    const record = page.getByRole('dialog', { name: /Authorization record/ });
+    await expect(record).toContainText('.003" Matte Anodized Aluminum Circular label');
+    await expect(record).toContainText('0.6250 × 0.6250 in');
   });
 
   test('closes on Escape', async ({ page }) => {
