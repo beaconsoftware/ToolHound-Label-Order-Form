@@ -687,7 +687,7 @@ test.describe('authorization record', () => {
       .getByRole('button', { name: 'Details' }).click();
 
     const drawer = page.getByRole('dialog');
-    await expect(drawer).toContainText('.003" Matte Anodized Aluminum Foil');
+    await expect(drawer).toContainText('.003" Anodized Aluminum Foil');
     // The stock's own wording for the die, not a square restatement of a round
     // one, and not the 0.63 two decimals would have given.
     await expect(drawer).toContainText('0.625" Round');
@@ -695,7 +695,7 @@ test.describe('authorization record', () => {
 
     await page.getByRole('button', { name: 'View / save as PDF' }).click();
     const record = page.getByRole('dialog', { name: /Authorization record/ });
-    await expect(record).toContainText('.003" matte anodized aluminum foil label');
+    await expect(record).toContainText('.003" anodized aluminum foil label');
     // A round die is a diameter, not a bounding box.
     await expect(record).toContainText('0.6250 in dia.');
   });

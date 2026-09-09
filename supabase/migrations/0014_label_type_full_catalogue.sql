@@ -4,7 +4,8 @@
 -- Customer Detail export for January 2022 to June 2026 shows four materials
 -- and seven sizes, and 0013's pairing rule would have rejected several orders
 -- ToolHound has actually shipped -- five anodized aluminium orders at
--- 1.25" x 0.50" among them. This is that gap closed.
+-- 1.25" x 0.50" among them. This is that gap closed, for the two materials
+-- the form can specify without guessing.
 --
 -- The type values change shape as well as widen. 'anodized_aluminum_circular'
 -- described one die as if it were a material; the material is anodized
@@ -13,11 +14,18 @@
 -- order has ever carried a label_type. Once rows exist this becomes a data
 -- migration instead.
 --
--- Deliberately excluded, and this is a decision rather than an omission: the
+-- Deliberately excluded, and these are decisions rather than omissions: the
+-- plain aluminium foil at 1.50" x 0.75" (Aecon Power Services, twice), the
 -- Universal Micro RFID label at 1 7/8" x 5/8" (Newgold, September 2024) and
--- the bespoke 5 mil matte PHA laminate (Bureau Veritas, April 2022). One order
--- each, years apart, and both are a conversation with Metalcraft rather than
--- a form field.
+-- the bespoke 5 mil matte PHA laminate (Bureau Veritas, April 2022). The foil
+-- invoices never recorded a thickness and the other two are one-offs, so none
+-- of the three can be specified from the form without guessing at a gauge or
+-- a construction. That is a conversation with Metalcraft.
+--
+-- Finish is not part of a type either. Metalcraft supply the anodized stock
+-- matte and say so on their own paperwork, but it belongs in the order's
+-- instructions when a customer asks for it, not baked into a stock name where
+-- every order specifies it silently.
 
 do $$
 begin
@@ -29,7 +37,7 @@ begin
 end $$;
 
 comment on column public.label_orders.label_type is
-  'Label stock: premium_poly_pro, anodized_aluminum_3mil or aluminum_foil. '
+  'Label stock: premium_poly_pro or anodized_aluminum_3mil. '
   'Nullable because every order written before this column existed is poly '
   'pro -- that was the only stock the form could express -- and the document '
   'says so for rows with no value rather than leaving the material blank.';
@@ -42,8 +50,7 @@ alter table public.label_orders
     label_type is null
     or label_type in (
       'premium_poly_pro',
-      'anodized_aluminum_3mil',
-      'aluminum_foil'
+      'anodized_aluminum_3mil'
     )
   );
 
@@ -71,6 +78,4 @@ alter table public.label_orders
              (label_width_in = 1.25  and label_height_in = 0.50)
           or (label_width_in = 1.50  and label_height_in = 0.50)
           or (label_width_in = 0.625 and label_height_in = 0.625)))
-    or (label_type = 'aluminum_foil'
-        and label_width_in = 1.50 and label_height_in = 0.75)
   );

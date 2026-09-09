@@ -43,9 +43,8 @@
    * Label types and the sizes each is made in, from config.js so that the form,
    * the printed document and the dashboard describe a type the same way. Size
    * is nested under type because the pairing is the rule, not a coincidence:
-   * 0.625" x 0.625" is only cut on the circular anodized aluminium stock, and
-   * offering it against poly pro is a way to reach production with a die
-   * Metalcraft does not have.
+   * 0.625" Round is only cut on the anodized aluminium, and offering it against
+   * poly pro is a way to reach production with a die Metalcraft does not have.
    */
   var LABEL_TYPES = (CONFIG.labelTypes || []);
 
@@ -610,9 +609,7 @@
     /**
      * Size drives the line description the printer works from, so it has to be
      * exact. The options come from the chosen type, so a size can only ever be
-     * one the type is actually made in. Where a type has a single size there is
-     * nothing to choose: the form states it and sets it, which is one less
-     * click and one less thing to get wrong.
+     * one the type is actually made in.
      */
     function labelSizeField() {
       var wrap = el('div', { class: 'field' });
@@ -629,20 +626,6 @@
         if (!sizes.length) {
           body.appendChild(el('div', { class: 'hint' },
             'Choose a label type first.'));
-          return;
-        }
-
-        if (sizes.length === 1) {
-          var only = sizes[0];
-          // Stated, not offered. Selecting it here keeps validation and the
-          // submitted row identical to the multi-size path.
-          d.labelSizeChoice = only.value;
-          d.labelWidthIn = only.w;
-          d.labelHeightIn = only.h;
-          errMsg.style.display = 'none';
-          body.appendChild(el('div', { class: 'fixed-size' }, only.label));
-          body.appendChild(el('div', { class: 'hint' },
-            labelTypeByValue(d.labelType).label + ' is made in this size only.'));
           return;
         }
 

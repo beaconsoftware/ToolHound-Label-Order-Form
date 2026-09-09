@@ -665,7 +665,7 @@ test.describe('fields the vendor PO needs', () => {
     await expect(page.getByRole('radio', { name: '0.625" Round' })).toHaveCount(0);
     await expect(page.getByRole('radio', { name: '1.50" x 0.50"' })).toHaveCount(0);
 
-    await page.getByRole('radio', { name: 'Matte Anodized Aluminum Foil' }).check();
+    await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
     await expect(page.getByRole('radio', { name: '1.25" x 0.50"' })).toHaveCount(1);
     await expect(page.getByRole('radio', { name: '1.50" x 0.50"' })).toHaveCount(1);
     await expect(page.getByRole('radio', { name: '0.625" Round' })).toHaveCount(1);
@@ -674,19 +674,6 @@ test.describe('fields the vendor PO needs', () => {
     await expect(page.getByRole('radio', { name: '0.75" x 0.75"' })).toHaveCount(0);
     await expect(page.getByRole('radio', { name: '1.00" x 1.00"' })).toHaveCount(0);
   });
-
-  // Aluminium foil has only ever been ordered at one size, so there is nothing
-  // to choose and the form states it instead of offering it.
-  test('states the single size for aluminium foil and offers no choice',
-    async ({ page }) => {
-      await fillStep1(page);
-      await page.getByRole('button', { name: 'Continue' }).click();
-
-      await page.getByRole('radio', { name: 'Aluminum Foil', exact: true }).check();
-      await expect(page.locator('.fixed-size')).toHaveText('1.50" x 0.75"');
-      await expect(page.getByRole('radio', { name: '1.50" x 0.75"' })).toHaveCount(0);
-      await expect(page.getByRole('radio', { name: '0.625" Round' })).toHaveCount(0);
-    });
 
   // 0.625 is the reason label_width_in had to move off numeric(5,2). If it ever
   // arrives as 0.63 the vendor cuts to the wrong die, so the submitted row is
@@ -697,13 +684,13 @@ test.describe('fields the vendor PO needs', () => {
 
     await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
     await page.getByRole('radio', { name: 'Yes', exact: true }).check();
-    await page.getByRole('radio', { name: 'Matte Anodized Aluminum Foil' }).check();
+    await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
     await page.getByRole('radio', { name: '0.625" Round' }).check();
     await fillQuantity(page, '500');
     await page.getByLabel('Starting Label Number *').fill('TSG-0001');
     await page.getByRole('button', { name: 'Continue' }).click();
 
-    await expect(page.getByText('.003" Matte Anodized Aluminum Foil').last())
+    await expect(page.getByText('.003" Anodized Aluminum Foil').last())
       .toBeVisible();
     await expect(page.getByText('0.625" Round').last()).toBeVisible();
 
@@ -725,7 +712,7 @@ test.describe('fields the vendor PO needs', () => {
 
     await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
     await page.getByRole('radio', { name: 'Yes', exact: true }).check();
-    await page.getByRole('radio', { name: 'Matte Anodized Aluminum Foil' }).check();
+    await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
     await page.getByRole('radio', { name: '0.625" Round' }).check();
     await fillQuantity(page, '500');
     await page.getByLabel('Starting Label Number *').fill('TSG-0001');
@@ -751,7 +738,7 @@ test.describe('fields the vendor PO needs', () => {
 
       await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
       await page.getByRole('radio', { name: 'Yes', exact: true }).check();
-      await page.getByRole('radio', { name: 'Matte Anodized Aluminum Foil' }).check();
+      await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
       await page.getByRole('radio', { name: '1.50" x 0.50"' }).check();
       await fillQuantity(page, '500');
       await page.getByLabel('Starting Label Number *').fill('TSG-0001');
@@ -780,7 +767,7 @@ test.describe('fields the vendor PO needs', () => {
     await page.getByRole('radio', { name: 'Yes', exact: true }).check();
     await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
     await page.getByRole('radio', { name: '0.75" x 0.75"' }).check();
-    await page.getByRole('radio', { name: 'Matte Anodized Aluminum Foil' }).check();
+    await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
     await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
 
     await expect(page.getByRole('radio', { name: '0.75" x 0.75"' })).not.toBeChecked();
@@ -790,33 +777,6 @@ test.describe('fields the vendor PO needs', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await expect(page.getByText('Please choose a label size')).toBeVisible();
   });
-
-  // 1.50" x 0.75" exists on two different stocks. The submitted row has to say
-  // which one, or the vendor document names the wrong material.
-  test('the same size on two stocks records the stock it was chosen against',
-    async ({ page }) => {
-      await fillStep1(page);
-      await page.getByRole('button', { name: 'Continue' }).click();
-
-      await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
-      await page.getByRole('radio', { name: 'Yes', exact: true }).check();
-      await page.getByRole('radio', { name: 'Aluminum Foil', exact: true }).check();
-      await fillQuantity(page, '500');
-      await page.getByLabel('Starting Label Number *').fill('1');
-      await page.getByRole('button', { name: 'Continue' }).click();
-      await page.getByRole('button', { name: 'Continue to Authorization' }).click();
-      await fillStep4(page);
-      await page.getByRole('button', { name: 'Submit Order' }).click();
-
-      const row = (await page.evaluate(() => window.__INSERTED__))[0];
-      expect(row.label_type).toBe('aluminum_foil');
-      expect(row.label_width_in).toBe(1.5);
-      expect(row.label_height_in).toBe(0.75);
-
-      await page.waitForSelector('.order-doc', { state: 'attached' });
-      await page.emulateMedia({ media: 'print' });
-      await expect(page.locator('.order-doc')).toContainText('Aluminum foil label');
-    });
 });
 
 test.describe('typed signature', () => {
