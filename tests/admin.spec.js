@@ -78,6 +78,7 @@ const ORDERS = [
     // than 0.63 on purpose: this is the value that has to survive the read back
     // onto the sheet the vendor works from.
     label_type: 'anodized_aluminum_3mil',
+    adhesive: 'Pressure Sensitive Acrylic Adhesive',
     label_width_in: 0.625,
     label_height_in: 0.625,
     quantity: 500,
@@ -757,6 +758,62 @@ test.describe('authorization record', () => {
     expect(clip['text/plain']).not.toContain('<td');
     expect(clip['text/plain']).toContain('LABEL SPECIFICATION');
   });
+
+  // Adhesive is per order and staff-set, so the two things that matter are
+  // that it reaches the document and that a blank one does not become a guess.
+  test('the adhesive reaches the vendor copy', async ({ page }) => {
+    await openDashboard(page);
+    await page.getByRole('row', { name: /Acme Industrial/ })
+      .getByRole('button', { name: 'Details' }).click();
+    await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+
+    const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
+    await expect(vendorCopy).toContainText('Adhesive');
+    await expect(vendorCopy).toContainText('Pressure Sensitive Acrylic Adhesive');
+  });
+
+  test('an order with no adhesive prints a dash, not a default',
+    async ({ page }) => {
+      await openDashboard(page);
+      // Northgate carries no adhesive.
+      await page.getByRole('button', { name: 'Details' }).first().click();
+      await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+
+      const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
+      await expect(vendorCopy).toContainText('Adhesive');
+      await expect(vendorCopy).not.toContainText('Pressure Sensitive');
+      await expect(vendorCopy).not.toContainText('MC78');
+    });
+
+  test('staff can set the adhesive, and it is the only column written',
+    async ({ page }) => {
+      await openDashboard(page);
+      await page.getByRole('button', { name: 'Details' }).first().click();
+
+      await page.getByLabel('Adhesive').fill('0.002" MC78 Adhesive');
+      await page.getByRole('button', { name: 'Save adhesive' }).click();
+      await expect(page.getByText('Saved.')).toBeVisible();
+
+      const updates = await page.evaluate(() => window.__UPDATES__);
+      expect(updates).toHaveLength(1);
+      // Nothing else rides along: this writes a supplier-facing spec.
+      expect(Object.keys(updates[0])).toEqual(['adhesive']);
+      expect(updates[0].adhesive).toBe('0.002" MC78 Adhesive');
+    });
+
+  test('clearing the adhesive stores null rather than an empty string',
+    async ({ page }) => {
+      await openDashboard(page);
+      await page.getByRole('row', { name: /Acme Industrial/ })
+        .getByRole('button', { name: 'Details' }).click();
+
+      await page.getByLabel('Adhesive').fill('   ');
+      await page.getByRole('button', { name: 'Save adhesive' }).click();
+      await expect(page.getByText('Saved.')).toBeVisible();
+
+      const updates = await page.evaluate(() => window.__UPDATES__);
+      expect(updates[0].adhesive).toBeNull();
+    });
 
   test('closes on Escape', async ({ page }) => {
     await openDashboard(page);
