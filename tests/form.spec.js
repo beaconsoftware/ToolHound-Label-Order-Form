@@ -242,11 +242,30 @@ test.describe('step 2 validation', () => {
     await expect(page.getByText('Should the logo be printed in full colour?')).toBeVisible();
   });
 
-  test('caps each custom text line at 10 characters', async ({ page }) => {
+  // 18 characters, and the cap has to hold in the browser because the database
+  // enforces the same number: a form that let a nineteenth character through
+  // would fail the insert with a constraint error naming nothing useful.
+  test('caps each custom text line at 18 characters', async ({ page }) => {
     await page.getByRole('radio', { name: 'Custom Text' }).check();
     const line1 = page.getByLabel('Text line 1');
-    await line1.fill('ABCDEFGHIJKLMNOP');
-    await expect(line1).toHaveValue('ABCDEFGHIJ');
+    await line1.fill('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    await expect(line1).toHaveValue('ABCDEFGHIJKLMNOPQR');
+  });
+
+  test('all three lines take the full 18 characters', async ({ page }) => {
+    await page.getByRole('radio', { name: 'Custom Text' }).check();
+    const eighteen = 'NORTHGATE MINING B';
+    for (const n of [1, 2, 3]) {
+      const line = page.getByLabel('Text line ' + n);
+      await line.fill(eighteen);
+      await expect(line).toHaveValue(eighteen);
+      // The counter is what tells the customer how much room is left, so it
+      // has to agree with the cap rather than with the old one. It sits in the
+      // row beside its own input; "Text line n" is an aria-label, not text, so
+      // the row is located by position.
+      await expect(page.locator('.textline-row').nth(n - 1)
+        .locator('.char-count')).toHaveText('18/18');
+    }
   });
 
   // Regression: `!d.quantity` is false for the string "0", so zero-quantity

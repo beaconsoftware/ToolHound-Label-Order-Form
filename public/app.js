@@ -50,7 +50,11 @@
   ];
 
   var MAX_TEXT_LINES = 3;
-  var MAX_TEXT_LINE_CHARS = 10;
+  // 18, not the 10 the old Microsoft Forms sheet used and this form inherited.
+  // Must match label_text_lines_valid() in the database, which 0012 widened;
+  // the two rules exist separately so a bypassed form still cannot overrun the
+  // label, and they are only useful while they agree.
+  var MAX_TEXT_LINE_CHARS = 18;
   var MAX_QUANTITY = 1000000;
 
   var QUANTITY_STEP = 500;
