@@ -41,7 +41,7 @@
   }
   .topbar-right{
     color:#fff;
-    font-size:13.5px;
+    font-size:18px;
     font-weight:600;
     letter-spacing:.02em;
     white-space:nowrap;
@@ -56,7 +56,7 @@
   .eyebrow{
     display:inline-block;
     color:var(--red);
-    font-size:12.5px;
+    font-size:18px;
     font-weight:700;
     letter-spacing:.12em;
     text-transform:uppercase;
@@ -71,7 +71,7 @@
   .hero p{
     max-width:560px;
     margin:0 auto;
-    font-size:15px;
+    font-size:18px;
     line-height:1.55;
     color:var(--ink-soft);
   }
@@ -103,7 +103,7 @@
   .tag.done{background:var(--red);}
   .tag.active{background:var(--red);}
   .step-label{
-    font-size:12px;
+    font-size:18px;
     text-transform:uppercase;
     letter-spacing:.08em;
     color:var(--ink-soft);
@@ -111,13 +111,13 @@
     margin-bottom:4px;
   }
   .step-title{
-    font-size:24px;
+    font-size:18px;
     margin:0 0 18px;
   }
   .field{margin-bottom:16px;}
   .field label{
     display:block;
-    font-size:13px;
+    font-size:18px;
     font-weight:600;
     margin-bottom:6px;
     color:var(--ink);
@@ -126,7 +126,7 @@
      one, and without this they rendered at full body size in near-black, which
      made them read as instructions rather than as asides. */
   .hint{
-    font-size:12px;
+    font-size:18px;
     color:var(--ink-soft);
     margin-top:5px;
     line-height:1.45;
@@ -143,7 +143,7 @@
     border:1.5px solid var(--line);
     border-radius:9px;
     font-family:'Inter',sans-serif;
-    font-size:14.5px;
+    font-size:18px;
     color:var(--ink);
     background:#fff;
     transition:border-color .15s ease, box-shadow .15s ease;
@@ -159,7 +159,7 @@
     border-color:#C0392B;
   }
   .err-msg{
-    font-size:12px;
+    font-size:18px;
     color:#C0392B;
     margin-top:5px;
     display:none;
@@ -171,7 +171,7 @@
   .radio-field{border:none;padding:0;margin:0 0 24px;}
   .radio-field legend{
     display:block;
-    font-size:13px;
+    font-size:18px;
     font-weight:600;
     margin-bottom:9px;
     padding:0;
@@ -218,7 +218,7 @@
   .choice.is-blocked:hover{border-color:var(--line);}
   .choice-note{
     margin-left:auto;
-    font-size:11.5px;
+    font-size:18px;
     color:var(--ink-soft);
     text-align:right;
   }
@@ -233,7 +233,7 @@
     text-align:center;
     cursor:pointer;
     color:var(--ink-soft);
-    font-size:13.5px;
+    font-size:18px;
   }
   .fileinput.has-file{border-color:var(--ok);color:var(--ok);border-style:solid;}
   .fileinput input{display:none;}
@@ -245,7 +245,7 @@
     flex-shrink:0;
     width:38px;
     text-align:right;
-    font-size:12px;
+    font-size:18px;
     color:var(--ink-soft);
   }
 
@@ -272,7 +272,7 @@
     margin-top:22px;
     padding-top:18px;
     border-top:1px solid var(--line);
-    font-size:13.5px;
+    font-size:18px;
     color:var(--ink-soft);
     text-align:center;
   }
@@ -290,7 +290,7 @@
   button{
     font-family:'Inter',sans-serif;
     font-weight:600;
-    font-size:14.5px;
+    font-size:18px;
     border:none;
     border-radius:9px;
     padding:12px 22px;
@@ -306,7 +306,7 @@
 
   .review-block{margin-bottom:18px;}
   .review-block h3{
-    font-size:12px;
+    font-size:18px;
     text-transform:uppercase;
     letter-spacing:.08em;
     color:var(--red-deep);
@@ -320,7 +320,7 @@
     gap:12px;
     padding:8px 0;
     border-bottom:1px solid var(--line);
-    font-size:14px;
+    font-size:18px;
   }
   .review-row:last-child{border-bottom:none;}
   .review-row .k{color:var(--ink-soft);}
@@ -330,7 +330,7 @@
     background:var(--cream);
     border-radius:10px;
     padding:16px;
-    font-size:13.5px;
+    font-size:18px;
     line-height:1.6;
     color:var(--ink-soft);
     margin-bottom:18px;
@@ -340,7 +340,7 @@
     gap:10px;
     align-items:flex-start;
     margin-bottom:18px;
-    font-size:13.5px;
+    font-size:18px;
   }
   .agree input{margin-top:3px;accent-color:var(--red);}
 
@@ -359,7 +359,7 @@
   .success .ref{
     font-family:'Inter',sans-serif;
     font-weight:800;
-    font-size:19px;
+    font-size:18px;
     letter-spacing:.03em;
     color:var(--red-deep);
     margin:12px 0 4px;
@@ -370,7 +370,7 @@
     margin-top:22px;
   }
   .foot a{
-    font-size:12.5px;
+    font-size:18px;
     color:var(--ink-soft);
     text-decoration:underline;
     cursor:pointer;
@@ -554,7 +554,10 @@ button:focus-visible{
 }
 .order-doc .od-party{padding:9px 11px;border-right:1px solid #D9D3D0;}
 .order-doc .od-party:last-child{border-right:none;}
-.order-doc .od-shipto{background:#FBEDEC;border-left:2.5px solid var(--red);}
+/* The one panel a reader must not skim past: where the labels physically go.
+   Deeper than the old #FBEDEC, which was so pale it read as a printing
+   artefact rather than a highlight. */
+.order-doc .od-shipto{background:#FADEDB;border-left:2.5px solid var(--red);}
 .order-doc .od-shipto .od-lab{color:var(--red-dark);}
 .order-doc .od-nm{font-weight:700;}
 .order-doc .od-ln{color:#3D3634;}
@@ -564,7 +567,7 @@ button:focus-visible{
 /* reference strip */
 .order-doc .od-refs{
   display:grid;
-  grid-template-columns:1.6fr 1fr;
+  grid-template-columns:1fr;
   border:1px solid #C8BFBB;
   border-top:none;
 }
@@ -716,13 +719,14 @@ button:focus-visible{
    * keeps it legible: shrinking the type is what made the printed copy
    * unreadable in the first place, because the browser then also scaled it to
    * fit two pages' worth of content. */
-  /* 17px, from 13.5 on screen. The vendor copy lost the authorisation block,
-     so it was filling barely a third of the page at a size nobody wanted to
-     read. This is the number to change if it wants to be bigger again; every
-     size inside the document is an em of it. */
+  /* 18px, from 13.5 on screen, and 18 is the ceiling rather than a taste
+     call: at 18.5 the fullest real order (NWT, six lines of serial blocks in
+     its instructions) tips onto a second page. Every size inside the document
+     is an em of this one, so this is the only number to change -- but check
+     that order still fits on one page before raising it. */
   .order-doc{
     padding:11mm;
-    font-size:17px;
+    font-size:18px;
     width:100%;
     max-width:none;
   }

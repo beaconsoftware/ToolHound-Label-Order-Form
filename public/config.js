@@ -132,6 +132,15 @@ window.TOOLHOUND_CONFIG = {
     }
   ],
 
+  // The adhesive stated on the label order document.
+  //
+  // Blank on purpose, so the document shows a dash rather than a guess. The
+  // form does not ask for it and the two orders that recorded one disagree:
+  // Millstone Weber's PO says "pressure sensitive acrylic adhesive", Bureau
+  // Veritas' says "MC778 3.5 mil kraft liner". Set this once Metalcraft
+  // confirm the standard, or it becomes a form field if it varies per order.
+  defaultAdhesive: '',
+
   // Wording for an order placed before label type was a field. Every such row
   // is poly pro, because that was the only stock the form could express.
   labelStock: '.002" Premium Poly Pro barcode label',
