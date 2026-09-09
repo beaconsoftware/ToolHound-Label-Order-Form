@@ -139,14 +139,22 @@
    * copies of the same paragraph, an email could tell Metalcraft one thing
    * while the sheet attached to it said another.
    */
-  function supplierInstructions(o, ref) {
+  function supplierInstructions(o, ref, opts) {
+    var instr = txt(o.instructions).trim();
+    // The vendor copy carries the customer's own words only. Everything the
+    // standing paragraph says -- proofs, where to send the invoice, quoting our
+    // reference -- is ToolHound's internal process and is handled off the
+    // sheet. What it must never drop is the customer's instructions: "18x rolls
+    // of 500" and "pressure sensitive acrylic adhesive" are how the labels get
+    // made, not how the paperwork moves.
+    if (opts && opts.audience === 'vendor') return instr;
+
     var by = (window.TOOLHOUND_CONFIG || {}).orderedBy || {};
     var standing = 'Send a proof for customer approval before production, and quote '
       + 'our reference ' + (ref || '(see above)') + ' on the proof, order '
       + 'acknowledgement, packing slip and invoice.'
       + (by.salesEmail ? ' Send the proof to ' + by.salesEmail + '.' : '')
       + (by.accountingEmail ? ' Send the invoice to ' + by.accountingEmail + '.' : '');
-    var instr = txt(o.instructions).trim();
     return instr ? instr + ' ' + standing : standing;
   }
 
@@ -274,7 +282,19 @@
    * Build the document. `o` is the normalised shape above; use fromForm or
    * fromRow to produce it.
    */
-  function render(o) {
+  function render(o, opts) {
+    opts = opts || {};
+    // Two audiences, one template.
+    //
+    // 'vendor' is the sheet that goes to Metalcraft: the specification and
+    // nothing else. Proof routing, invoice routing and the customer's signed
+    // authorisation are ToolHound's business, and putting them in front of the
+    // supplier invites them to act on process that is not theirs.
+    //
+    // 'record' (the default) is the signed copy: what the customer approved,
+    // reproduced whole. Dropping the authorisation from that one would throw
+    // away the only evidence that a nonreturnable order was agreed to.
+    var vendor = opts.audience === 'vendor';
     var cfg = (window.TOOLHOUND_CONFIG || {});
     var by = cfg.orderedBy || {};
     var sup = cfg.supplier || {};
@@ -428,24 +448,43 @@
       ? o.textLines.join(' / ') : 'Logo only')
       .forEach(function (n) { artwork.appendChild(n); });
 
-    var handling = el('div', { class: 'od-kv' });
-    labelled('Proof', 'Required before production')
-      .forEach(function (n) { handling.appendChild(n); });
-    labelled('Proof to', by.salesEmail || '')
-      .forEach(function (n) { handling.appendChild(n); });
-    labelled('Invoice to', by.accountingEmail || '')
-      .forEach(function (n) { handling.appendChild(n); });
+    if (vendor) {
+      // Artwork alone, so it takes the full width rather than leaving the
+      // right half of the panel empty.
+      doc.appendChild(el('div', { class: 'od-two od-two-one' }, [
+        el('div', {}, artwork)
+      ]));
+    } else {
+      var handling = el('div', { class: 'od-kv' });
+      labelled('Proof', 'Required before production')
+        .forEach(function (n) { handling.appendChild(n); });
+      labelled('Proof to', by.salesEmail || '')
+        .forEach(function (n) { handling.appendChild(n); });
+      labelled('Invoice to', by.accountingEmail || '')
+        .forEach(function (n) { handling.appendChild(n); });
 
-    doc.appendChild(el('div', { class: 'od-two' }, [
-      el('div', {}, artwork),
-      el('div', {}, handling)
-    ]));
+      doc.appendChild(el('div', { class: 'od-two' }, [
+        el('div', {}, artwork),
+        el('div', {}, handling)
+      ]));
+    }
 
     // --- instructions -----------------------------------------------------
-    doc.appendChild(el('div', { class: 'od-block' }, [
-      el('span', { class: 'od-lab od-blk', text: 'Instructions to supplier' }),
-      el('div', { text: supplierInstructions(o, ref) })
-    ]));
+    // On the vendor copy this block appears only when the customer actually
+    // wrote something, so an order with no notes gets no empty heading.
+    var instrText = supplierInstructions(o, ref, opts);
+    if (instrText) {
+      doc.appendChild(el('div', { class: 'od-block' }, [
+        el('span', { class: 'od-lab od-blk',
+          text: vendor ? 'Special instructions' : 'Instructions to supplier' }),
+        el('div', { text: instrText })
+      ]));
+    }
+
+    if (vendor) {
+      doc.appendChild(footer(by, ref));
+      return doc;
+    }
 
     // --- authorisation ----------------------------------------------------
     doc.appendChild(sectionBar('Customer authorisation'));
@@ -474,13 +513,18 @@
     doc.appendChild(auth);
 
     // --- footer -----------------------------------------------------------
-    doc.appendChild(el('div', { class: 'od-foot' }, [
+    doc.appendChild(footer(by, ref));
+
+    return doc;
+  }
+
+  /** Shared, because the vendor copy returns before reaching the end. */
+  function footer(by, ref) {
+    return el('div', { class: 'od-foot' }, [
       el('span', { text: [by.name, by.salesEmail, by.accountingEmail, by.phone]
         .filter(Boolean).join(' · ') }),
       el('span', { class: 'od-m', text: ref })
-    ]));
-
-    return doc;
+    ]);
   }
 
   // ---------------------------------------------------------------------------
@@ -625,11 +669,17 @@
     if (o.logoFileName) h += emRow('Logo file name', o.logoFileName);
 
     // instructions -- called out on its own because it is the part a person
-    // wrote, and the part most likely to be the reason for the email.
-    h += emSection('Instructions to supplier');
-    h += '<tr><td colspan="2" style="' + EM.cell + '">'
-      + esc(supplierInstructions(o, ref)).replace(/\n/g, '<br>')
-      + '</td></tr>';
+    // wrote, and the part most likely to be the reason for the email. The
+    // email goes to Metalcraft, so it is the vendor copy unless told otherwise:
+    // the customer's notes, without ToolHound's proof and invoice routing.
+    var instrText = supplierInstructions(o, ref,
+      { audience: opts.audience || 'vendor' });
+    if (instrText) {
+      h += emSection('Special instructions');
+      h += '<tr><td colspan="2" style="' + EM.cell + '">'
+        + esc(instrText).replace(/\n/g, '<br>')
+        + '</td></tr>';
+    }
 
     h += '</table>';
 
@@ -713,11 +763,13 @@
         + (opts.artwork.dataUrl ? ' (shown above)' : ' (attached)'));
     }
     L.push('');
-    L.push('INSTRUCTIONS TO SUPPLIER');
-    supplierInstructions(o, ref).split('\n').forEach(function (l) {
-      L.push('  ' + l);
-    });
-    L.push('');
+    var instrText = supplierInstructions(o, ref,
+      { audience: opts.audience || 'vendor' });
+    if (instrText) {
+      L.push('SPECIAL INSTRUCTIONS');
+      instrText.split('\n').forEach(function (l) { L.push('  ' + l); });
+      L.push('');
+    }
     L.push(txt(by.name) + ' · ' + txt(by.salesEmail) + ' · '
       + txt(by.accountingEmail) + ' · ' + txt(by.phone));
 

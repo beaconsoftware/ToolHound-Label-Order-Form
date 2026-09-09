@@ -618,6 +618,9 @@ button:focus-visible{
   border:1px solid #C8BFBB;
   border-top:none;
 }
+/* The vendor copy has no proof-and-invoice panel, so artwork takes the row
+   rather than leaving half of it blank. */
+.order-doc .od-two-one{grid-template-columns:1fr;}
 .order-doc .od-two > div{padding:9px 11px;border-right:1px solid #D9D3D0;}
 .order-doc .od-two > div:last-child{border-right:none;}
 /* Fixed label column so a long label wraps instead of shoving every value
