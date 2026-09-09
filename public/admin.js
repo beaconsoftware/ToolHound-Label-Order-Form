@@ -92,7 +92,10 @@
     'address', 'city', 'state_province', 'postal_code', 'country',
     'logo_choice', 'logo_file_name', 'text_lines', 'full_color',
     'quantity', 'start_seq', 'seq_start', 'instructions',
-    'label_type', 'label_width_in', 'label_height_in',
+    // adhesive is on the document Metalcraft works from, so leaving it out of
+    // this list would print a dash on every order that has one -- the same way
+    // quote_number printed the internal ref.
+    'label_type', 'adhesive', 'label_width_in', 'label_height_in',
     'ship_to_phone', 'attention_name', 'customer_po',
     'authorized_name', 'approval_date'
   ].join(',');
@@ -396,7 +399,7 @@
     'address', 'city', 'state_province', 'postal_code', 'country',
     'attention_name', 'ship_to_phone', 'customer_po',
     'logo_choice', 'logo_file_name', 'text_lines', 'full_color',
-    'label_type', 'label_width_in', 'label_height_in',
+    'label_type', 'adhesive', 'label_width_in', 'label_height_in',
     'quantity', 'seq_start', 'start_seq', 'instructions'
   ];
 
@@ -542,7 +545,14 @@
     });
   }
 
-  function saveNotes(order, notes, button, statusEl) {
+  /**
+   * Write one or more staff-editable fields on an order.
+   *
+   * Shared by internal notes and the adhesive rather than copied per field: a
+   * second copy is a second place to forget to fold the returned row back into
+   * state, which is how a saved value stops showing until a reload.
+   */
+  function saveOrderPatch(order, patch, button, statusEl, buttonLabel) {
     var db = getDb();
     if (!db) return;
     if (button) { button.disabled = true; button.textContent = 'Saving…'; }
@@ -550,7 +560,7 @@
 
     Promise.resolve(
       db.from('label_orders')
-        .update({ internal_notes: notes || null })
+        .update(patch)
         .eq('id', order.id)
         .select(LIST_COLUMNS)
     ).then(function (res) {
@@ -561,13 +571,13 @@
           return o.id === updated.id ? updated : o;
         });
       } else {
-        order.internal_notes = notes || null;
+        Object.keys(patch).forEach(function (k) { order[k] = patch[k]; });
       }
-      if (button) { button.disabled = false; button.textContent = 'Save notes'; }
+      if (button) { button.disabled = false; button.textContent = buttonLabel; }
       if (statusEl) statusEl.textContent = 'Saved.';
     }).catch(function (err) {
-      console.error('Notes update failed', err);
-      if (button) { button.disabled = false; button.textContent = 'Save notes'; }
+      console.error('Order update failed', err);
+      if (button) { button.disabled = false; button.textContent = buttonLabel; }
       if (statusEl) {
         statusEl.textContent = 'Could not save: '
           + (err && err.message ? err.message : 'unknown error');
@@ -1327,12 +1337,38 @@
       ]));
     }
 
+    var adhesiveInput = el('input', {
+      type: 'text',
+      'aria-label': 'Adhesive',
+      placeholder: 'e.g. Pressure Sensitive Acrylic Adhesive'
+    });
+    adhesiveInput.value = order.adhesive || '';
+    var adhesiveStatus = el('div', { class: 'hint', role: 'status' });
+    var adhesiveBtn = el('button', {}, 'Save adhesive');
+    adhesiveBtn.addEventListener('click', function () {
+      saveOrderPatch(order, { adhesive: adhesiveInput.value.trim() || null },
+        adhesiveBtn, adhesiveStatus, 'Save adhesive');
+    });
+    drawer.appendChild(el('div', { class: 'review-block' }, [
+      el('h3', { text: 'Adhesive' }),
+      el('div', { class: 'field' }, [adhesiveInput]),
+      adhesiveBtn,
+      el('div', {
+        class: 'artwork-note',
+        text: 'Prints on the vendor copy. Staff-set rather than asked on the '
+          + 'form, because it is agreed with Metalcraft and a customer has no '
+          + 'way to know it. Blank prints as a dash.'
+      }),
+      adhesiveStatus
+    ]));
+
     var notesArea = el('textarea', { rows: '4', 'aria-label': 'Internal notes' });
     notesArea.value = order.internal_notes || '';
     var notesStatus = el('div', { class: 'hint', role: 'status' });
     var notesBtn = el('button', { class: 'primary' }, 'Save notes');
     notesBtn.addEventListener('click', function () {
-      saveNotes(order, notesArea.value.trim(), notesBtn, notesStatus);
+      saveOrderPatch(order, { internal_notes: notesArea.value.trim() || null },
+        notesBtn, notesStatus, 'Save notes');
     });
     drawer.appendChild(el('div', { class: 'review-block' }, [
       el('h3', { text: 'Internal notes' }),
