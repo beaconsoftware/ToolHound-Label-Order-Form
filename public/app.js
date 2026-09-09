@@ -14,10 +14,20 @@
 
   var CONFIG = window.TOOLHOUND_CONFIG || {};
 
+  /**
+   * What goes on the label besides the code.
+   *
+   * `serial_only` exists because the other three could not express a real
+   * order. NWT's 0.625" round asset tags carry the serial number and nothing
+   * else: no logo, no text. With only the first three options the form forced
+   * a choice, the customer picked Custom Text and typed the words "NO TEXT",
+   * and that order would have printed NO TEXT on 500 aluminium labels.
+   */
   var LOGO_CHOICES = [
     { value: 'custom_logo', label: 'Custom Logo' },
     { value: 'custom_text', label: 'Custom Text' },
-    { value: 'toolhound_logo', label: 'ToolHound Logo' }
+    { value: 'toolhound_logo', label: 'ToolHound Logo' },
+    { value: 'serial_only', label: 'Serial Number Only (no logo or text)' }
   ];
 
   var LOGO_CHOICE_LABELS = LOGO_CHOICES.reduce(function (acc, c) {
@@ -533,10 +543,16 @@
     card.appendChild(colorHost);
     var colorField = null;
 
+    // Nothing to colour on a text-only or serial-only label, so the question,
+    // and the surcharge it implies, does not apply to either.
+    function colourApplies(choice) {
+      return choice !== 'custom_text' && choice !== 'serial_only';
+    }
+
     function renderColorField() {
       colorHost.innerHTML = '';
       colorField = null;
-      if (d.logoChoice !== 'custom_text') {
+      if (colourApplies(d.logoChoice)) {
         colorField = radioField('Should the logo be printed in full colour? *', 'fullColor',
           [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }],
           d.fullColor, function (v) {
@@ -546,9 +562,10 @@
         colorHost.appendChild(colorField);
         colorHost.appendChild(el('div', { class: 'hint', style: 'margin-top:-4px;margin-bottom:16px;' },
           'Full-colour printing includes an additional surcharge.'));
-      } else if (!d.fullColor) {
-        // No colour question applies to text-only labels; carry a value so
-        // the (required) database column is still satisfied.
+      } else {
+        // No colour question was asked, so carry the answer it implies: the
+        // column is required, and a stale Yes from a logo the customer has
+        // since switched away from would put a surcharge on the order.
         d.fullColor = 'No';
       }
     }

@@ -23,7 +23,10 @@
   var LOGO_LABELS = {
     toolhound_logo: 'ToolHound logo',
     custom_logo: 'Customer logo supplied',
-    custom_text: 'Text only'
+    custom_text: 'Text only',
+    // Stated as an instruction rather than an absence, because "none" on a
+    // vendor sheet reads as an omission somebody should chase.
+    serial_only: 'Serial number only — no logo, no text'
   };
 
   function el(tag, attrs, children) {

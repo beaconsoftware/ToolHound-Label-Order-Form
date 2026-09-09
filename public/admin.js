@@ -50,7 +50,8 @@
   var LOGO_CHOICE_LABELS = {
     custom_logo: 'Custom Logo',
     custom_text: 'Custom Text',
-    toolhound_logo: 'ToolHound Logo'
+    toolhound_logo: 'ToolHound Logo',
+    serial_only: 'Serial number only'
   };
 
   var FILTERS = [
