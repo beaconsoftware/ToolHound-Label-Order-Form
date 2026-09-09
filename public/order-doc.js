@@ -197,6 +197,7 @@
       textLines: (d.textLines || []).map(function (l) { return String(l || '').trim(); })
         .filter(function (l) { return l.length > 0; }),
       fullColor: d.fullColor,
+      adhesive: d.adhesive,
       labelType: d.labelType,
       labelWidthIn: d.labelWidthIn,
       labelHeightIn: d.labelHeightIn,
@@ -227,6 +228,7 @@
       logoFileName: row.logo_file_name,
       textLines: (row.text_lines || []).filter(Boolean),
       fullColor: row.full_color,
+      adhesive: row.adhesive,
       labelType: row.label_type,
       labelWidthIn: row.label_width_in,
       labelHeightIn: row.label_height_in,
@@ -373,15 +375,13 @@
     doc.appendChild(el('div', { class: 'od-parties' }, [orderedBy, supplier, shipTo]));
 
     // --- reference strip --------------------------------------------------
+    // The end customer was the ship-to company restated, so it said nothing the
+    // panel above did not already say twice as loudly.
     doc.appendChild(el('div', { class: 'od-refs' }, [
       el('div', { class: 'od-ref' }, [
         el('span', { class: 'od-lab od-blk',
           text: 'Our reference — quote this on all documents' }),
         el('span', { class: 'od-rv', text: ref || '—' })
-      ]),
-      el('div', { class: 'od-ref' }, [
-        el('span', { class: 'od-lab od-blk', text: 'End customer' }),
-        el('span', { class: 'od-rv', text: txt(o.companyName) || '—' })
       ])
     ]));
 
@@ -437,6 +437,14 @@
     // --- artwork and handling --------------------------------------------
     var artwork = el('div', { class: 'od-kv' });
     labelled('Artwork', artworkText(o.logoChoice))
+      .forEach(function (n) { artwork.appendChild(n); });
+    // Adhesive is not asked for on the form, so it comes from config and is
+    // deliberately blank until someone sets it. It is NOT defaulted to a
+    // guess: the two orders that recorded one recorded different answers
+    // (Millstone "pressure sensitive acrylic", Bureau Veritas "MC778 3.5 mil
+    // kraft liner"), so a hardcoded value would be a spec asserted to the
+    // printer on every order with nothing behind it.
+    labelled('Adhesive', txt(o.adhesive) || txt(cfg.defaultAdhesive))
       .forEach(function (n) { artwork.appendChild(n); });
     labelled('Logo file name (if applicable)',
       o.logoChoice === 'custom_logo' ? txt(o.logoFileName) : '')
@@ -663,6 +671,8 @@
     // artwork
     h += emSection('Artwork');
     h += emRow('Type', artworkText(o.logoChoice));
+    var adhesive = txt(o.adhesive) || txt(cfg.defaultAdhesive);
+    if (adhesive) h += emRow('Adhesive', adhesive);
     if (o.logoChoice === 'custom_text') {
       h += emRow('Text on label', (o.textLines || []).join('  /  '));
     }
@@ -754,6 +764,8 @@
     L.push('');
     L.push('ARTWORK');
     L.push('  Type: ' + artworkText(o.logoChoice));
+    var adhesive = txt(o.adhesive) || txt(cfg.defaultAdhesive);
+    if (adhesive) L.push('  Adhesive: ' + adhesive);
     if (o.logoChoice === 'custom_text') {
       L.push('  Text on label: ' + (o.textLines || []).join('  /  '));
     }
