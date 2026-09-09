@@ -1337,6 +1337,36 @@
       ]));
     }
 
+    // Editable because a sequence can legitimately be unknown: Phoenix's next
+    // run has to pick up where the last one ended, and only Metalcraft know
+    // where that was. A placeholder left in the field is worse than a blank --
+    // it looks valid and would re-issue numbers the customer already has.
+    var seqInput = el('input', {
+      type: 'text',
+      'aria-label': 'Starting label number',
+      placeholder: 'e.g. 45001, TSG-0001 — blank until confirmed'
+    });
+    seqInput.value = order.seq_start || '';
+    var seqStatus = el('div', { class: 'hint', role: 'status' });
+    var seqBtn = el('button', {}, 'Save sequence');
+    seqBtn.addEventListener('click', function () {
+      saveOrderPatch(order, { seq_start: seqInput.value.trim() || null },
+        seqBtn, seqStatus, 'Save sequence');
+    });
+    drawer.appendChild(el('div', { class: 'review-block' }, [
+      el('h3', { text: 'Starting label number' }),
+      el('div', { class: 'field' }, [seqInput]),
+      seqBtn,
+      el('div', {
+        class: 'artwork-note',
+        text: 'Letters, numbers and hyphens, ending in a digit. Leave blank '
+          + 'while the continuation point is still with the supplier: the '
+          + 'vendor copy then says the sequence is to be confirmed rather '
+          + 'than printing a number nobody has agreed.'
+      }),
+      seqStatus
+    ]));
+
     var adhesiveInput = el('input', {
       type: 'text',
       'aria-label': 'Adhesive',
