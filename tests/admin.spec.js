@@ -815,6 +815,54 @@ test.describe('authorization record', () => {
       expect(updates[0].adhesive).toBeNull();
     });
 
+  // A sequence can legitimately be unknown while the supplier is asked where
+  // the last run ended. The document has to say so rather than claim the
+  // labels are not serialised.
+  test('an order with no sequence says so instead of printing a number',
+    async ({ page }) => {
+      await openDashboard(page, {
+        orders: [Object.assign({}, ORDERS[0], {
+          seq_start: null, start_seq: null, quantity: 9000
+        })]
+      });
+      await page.getByRole('button', { name: 'Details' }).first().click();
+      await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+
+      const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
+      await expect(vendorCopy).toContainText('To be confirmed');
+      // The quantity is still known and still stated.
+      await expect(vendorCopy).toContainText('9,000');
+      // And no invented starting number anywhere.
+      await expect(vendorCopy).not.toContainText('0001');
+    });
+
+  test('staff can clear the sequence, and null is what is stored',
+    async ({ page }) => {
+      await openDashboard(page);
+      await page.getByRole('button', { name: 'Details' }).first().click();
+
+      await page.getByLabel('Starting label number').fill('');
+      await page.getByRole('button', { name: 'Save sequence' }).click();
+      await expect(page.getByText('Saved.')).toBeVisible();
+
+      const updates = await page.evaluate(() => window.__UPDATES__);
+      expect(updates).toHaveLength(1);
+      expect(Object.keys(updates[0])).toEqual(['seq_start']);
+      expect(updates[0].seq_start).toBeNull();
+    });
+
+  test('staff can set the continuation point', async ({ page }) => {
+    await openDashboard(page);
+    await page.getByRole('button', { name: 'Details' }).first().click();
+
+    await page.getByLabel('Starting label number').fill('45001');
+    await page.getByRole('button', { name: 'Save sequence' }).click();
+    await expect(page.getByText('Saved.')).toBeVisible();
+
+    const updates = await page.evaluate(() => window.__UPDATES__);
+    expect(updates[0]).toEqual({ seq_start: '45001' });
+  });
+
   test('closes on Escape', async ({ page }) => {
     await openDashboard(page);
     await page.getByRole('button', { name: 'Details' }).first().click();

@@ -402,7 +402,8 @@
       el('td', { class: 'od-m', text: dieSize(o.labelWidthIn, o.labelHeightIn,
         shapeOf(cfg, o.labelType, o.labelWidthIn, o.labelHeightIn)) || '—' }),
       el('td', { class: 'od-m', text: colourText(o.fullColor) }),
-      el('td', { text: seq && seq.from ? 'Yes' : 'No' }),
+      el('td', { text: seq && seq.from ? 'Yes'
+        : (txt(o.seqStart) ? 'Yes' : 'To be confirmed') }),
       el('td', { class: 'od-m od-b', text: groupThousands(o.quantity) })
     ]);
     doc.appendChild(el('table', { class: 'od-tbl' }, [
