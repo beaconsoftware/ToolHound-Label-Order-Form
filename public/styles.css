@@ -428,7 +428,11 @@ button:focus-visible{
 .print-only{display:none;}
 
 @media print{
-  @page{margin:16mm;}
+  /* 10mm, not 16: at 16 the document had 11px of vertical slack on Letter, so
+     a single extra wrapped line tipped a one-page supplier form onto two pages
+     with a nearly empty second. 10mm gives 7.7in x 10.2in to work in. Size is
+     stated so the page box does not depend on the driver's default. */
+  @page{size:letter;margin:10mm;}
   body{background:#fff;}
   .topbar,.hero,.stepper,.actions,.foot,.no-print{display:none !important;}
   .print-only{display:block;}
@@ -689,8 +693,31 @@ button:focus-visible{
 
 @media print{
   /* The document is the page when printing: no shell padding, no page breaks
-     inside a block that a supplier reads as one thing. */
-  .order-doc{padding:0;font-size:11.5px;}
+     inside a block that a supplier reads as one thing.
+   *
+   * The paddings below are trimmed from their screen values. On screen the
+   * document breathes inside a scrolling card; on paper it has a fixed height
+   * to live in, and the version that filled 924px of a 935px page box left no
+   * room for a wrapped address line. Trimming the rhythm rather than the type
+   * keeps it legible: shrinking the type is what made the printed copy
+   * unreadable in the first place, because the browser then also scaled it to
+   * fit two pages' worth of content. */
+  .order-doc{padding:0;font-size:11.5px;width:100%;max-width:none;}
+  .order-doc .od-brand img{height:46px;}
+  .order-doc .od-head{padding-bottom:9px;}
+  .order-doc .od-parties{margin-top:11px;}
+  .order-doc .od-party{padding:7px 10px;}
+  .order-doc .od-ref{padding:5px 10px;}
+  .order-doc .od-sec{margin-top:11px;padding:3px 10px;}
+  .order-doc .od-tbl th{padding:4px 8px;}
+  .order-doc .od-tbl td{padding:6px 8px;}
+  .order-doc .od-two > div,
+  .order-doc .od-block{padding:7px 10px;}
+  .order-doc .od-auth{padding:8px 10px;}
+  .order-doc .od-authtext{padding:6px 9px;}
+  .order-doc .od-siggrid{margin-top:8px;}
+  .order-doc .od-sig{padding:6px 10px;min-height:54px;}
+  .order-doc .od-foot{margin-top:10px;padding-top:7px;}
   .order-doc .od-parties,
   .order-doc .od-refs,
   .order-doc .od-tbl,

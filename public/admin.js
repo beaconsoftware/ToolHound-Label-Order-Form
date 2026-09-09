@@ -78,7 +78,12 @@
   // it to `data:image/png;base64,` under 2MB (migration 0003): a PNG cannot
   // carry script, where the SVG the artwork column accepts can.
   var LIST_COLUMNS = [
-    'id', 'order_ref', 'submitted_at', 'status',
+    // quote_number is not optional here. It is the reference the label order
+    // document tells Metalcraft to quote back on the proof, acknowledgement,
+    // packing slip and invoice, and the document falls back to the internal
+    // THL- ref when it is missing. Leaving it out of this list printed that
+    // fallback on real orders that had a quote number all along.
+    'id', 'order_ref', 'quote_number', 'submitted_at', 'status',
     'signature_data',
     'po_sent_at', 'production_confirmed_at', 'shipped_at', 'cancelled_at',
     'updated_at', 'internal_notes',
@@ -384,7 +389,7 @@
    * the job needs and nothing more.
    */
   var PO_INPUT_FIELDS = [
-    'order_ref', 'submitted_at', 'status',
+    'order_ref', 'quote_number', 'submitted_at', 'status',
     'company_name', 'contact_name', 'contact_email',
     'address', 'city', 'state_province', 'postal_code', 'country',
     'attention_name', 'ship_to_phone', 'customer_po',
@@ -612,6 +617,120 @@
       }
     }).then(function () {
       if (button) { button.disabled = false; button.textContent = restore; }
+    });
+  }
+
+  /**
+   * Put the order on the clipboard in a form that survives a paste into
+   * Outlook or Gmail: rich HTML, with a plain-text flavour alongside for a
+   * plain-text composer.
+   *
+   * Two flavours in one clipboard write is the whole point. A single text/html
+   * write pastes as literal tags in a plain-text composer; a single text/plain
+   * write loses the layout everywhere. The async Clipboard API carries both.
+   *
+   * The fallback for browsers without ClipboardItem copies from a hidden
+   * contenteditable, which is how this was done before that API and still
+   * yields rich text.
+   *
+   * Artwork: fetched on demand, and inlined only when it is a raster. SVG is
+   * never inlined -- the same reason downloadArtwork() exists, since an SVG
+   * can carry script -- and a PDF cannot be an <img> at all, so those are
+   * named in the email and attached by hand instead.
+   */
+  var INLINEABLE_ARTWORK = /^data:image\/(png|jpeg|jpg|gif);base64,/i;
+
+  function writeRichClipboard(html, text) {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      return navigator.clipboard.write([new window.ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' })
+      })]);
+    }
+    return new Promise(function (resolve, reject) {
+      var host = el('div', {});
+      host.setAttribute('contenteditable', 'true');
+      host.style.cssText =
+        'position:fixed;left:-9999px;top:0;white-space:pre-wrap;';
+      host.innerHTML = html;
+      document.body.appendChild(host);
+      try {
+        var range = document.createRange();
+        range.selectNodeContents(host);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        var ok = document.execCommand('copy');
+        sel.removeAllRanges();
+        ok ? resolve() : reject(new Error('Copy was refused by the browser'));
+      } catch (err) {
+        reject(err);
+      } finally {
+        document.body.removeChild(host);
+      }
+    });
+  }
+
+  function copyOrderForEmail(order, button, statusEl) {
+    var mod = window.TOOLHOUND_ORDER_DOC;
+    if (!mod || !mod.emailHtml) {
+      if (statusEl) statusEl.textContent = 'order-doc.js did not load.';
+      return;
+    }
+    var restore = button ? button.textContent : '';
+    if (button) { button.disabled = true; button.textContent = 'Copying…'; }
+    if (statusEl) statusEl.textContent = '';
+
+    fetchArtworkForEmail(order).then(function (artwork) {
+      var o = mod.fromRow(order);
+      var opts = {
+        // Absolute, because a relative src means nothing once the HTML is in
+        // somebody's mail client.
+        logoUrl: new URL('toolhound-logo.png', document.baseURI).href,
+        artwork: artwork
+      };
+      return writeRichClipboard(mod.emailHtml(o, opts), mod.emailText(o, opts))
+        .then(function () {
+          if (statusEl) {
+            statusEl.textContent = 'Copied. Paste into your email.'
+              + (artwork && artwork.name && !artwork.dataUrl
+                ? ' Attach ' + artwork.name + ' — it cannot be pasted inline.'
+                : '');
+          }
+        });
+    }).catch(function (err) {
+      console.error('Copy for email failed', err);
+      if (statusEl) {
+        statusEl.textContent = 'Could not copy: '
+          + (err && err.message ? err.message : 'unknown error');
+      }
+    }).then(function () {
+      if (button) { button.disabled = false; button.textContent = restore; }
+    });
+  }
+
+  /** Resolves to { name, dataUrl? }, or null when the order has no artwork. */
+  function fetchArtworkForEmail(order) {
+    if (order.logo_choice !== 'custom_logo') return Promise.resolve(null);
+    var db = getDb();
+    if (!db) return Promise.resolve({ name: order.logo_file_name });
+    return Promise.resolve(
+      db.from('label_orders')
+        .select('logo_file_name,logo_file_data')
+        .eq('id', order.id)
+        .limit(1)
+    ).then(function (res) {
+      if (res && res.error) throw res.error;
+      var row = (res && res.data && res.data[0]) || {};
+      var name = row.logo_file_name || order.logo_file_name;
+      if (!name) return null;
+      if (row.logo_file_data && INLINEABLE_ARTWORK.test(row.logo_file_data)) {
+        return { name: name, dataUrl: row.logo_file_data };
+      }
+      return { name: name };
+    }).catch(function () {
+      // The email is still worth having without the picture in it.
+      return { name: order.logo_file_name };
     });
   }
 
@@ -1207,17 +1326,27 @@
       notesStatus
     ]));
 
+    var emailStatus = el('div', { class: 'hint', role: 'status' });
+    var emailBtn = el('button', {
+      onclick: function () { copyOrderForEmail(order, emailBtn, emailStatus); }
+    }, 'Copy for email');
+
     drawer.appendChild(el('div', { class: 'review-block' }, [
       el('h3', { text: 'Authorization record' }),
-      el('button', {
-        class: 'primary',
-        onclick: function () { openRecord(order, false); }
-      }, 'View / save as PDF'),
+      el('div', { class: 'record-buttons' }, [
+        el('button', {
+          class: 'primary',
+          onclick: function () { openRecord(order, false); }
+        }, 'View / save as PDF'),
+        emailBtn
+      ]),
       el('div', {
         class: 'artwork-note',
         text: 'The document the customer reviewed and signed, exactly as they '
-          + 'saw it. Print it to save a PDF copy.'
-      })
+          + 'saw it. Print it to save a PDF copy, or copy it for an email to '
+          + 'Metalcraft.'
+      }),
+      emailStatus
     ]));
 
     // Deleting removes a signed authorization and there is no undo, so it sits
