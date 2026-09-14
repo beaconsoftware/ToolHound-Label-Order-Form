@@ -15,6 +15,20 @@
   var CONFIG = window.TOOLHOUND_CONFIG || {};
 
   /**
+   * Which of the two forms this page is. Set by the page itself, not chosen by
+   * the customer: barcode symbology is something sales knows from the quote and
+   * the customer has no basis to decide.
+   *
+   * No default. A page served without one would submit an order whose symbology
+   * nobody stated, and the printer would have to ask -- so the form refuses to
+   * render instead, which fails loudly at deploy time rather than quietly on
+   * somebody's order.
+   */
+  var BARCODE_TYPES = CONFIG.barcodeTypes || {};
+  var VARIANT = window.TOOLHOUND_FORM_VARIANT || '';
+  var VARIANT_DEF = BARCODE_TYPES[VARIANT] || null;
+
+  /**
    * What goes on the label besides the code.
    *
    * `serial_only` exists because the other three could not express a real
@@ -91,12 +105,9 @@
   var MAX_TEXT_LINE_CHARS = 18;
   var MAX_QUANTITY = 1000000;
 
-  var QUANTITY_STEP = 500;
-  var QUANTITY_MAX_OPTION = 10000;
-  var QUANTITY_OPTIONS = [];
-  for (var qv = QUANTITY_STEP; qv <= QUANTITY_MAX_OPTION; qv += QUANTITY_STEP) {
-    QUANTITY_OPTIONS.push(qv);
-  }
+  // 3,000 / 5,000 / 10,000, from config. The old 500-step list was the stock
+  // ToolHound label ladder and had no business on a custom order.
+  var QUANTITY_OPTIONS = CONFIG.quantityOptions || [3000, 5000, 10000];
 
   var STEP_TITLES = [
     'Customer & Shipping Information',
@@ -112,7 +123,9 @@
     orderRef: null,
     submittedAt: null,
     data: {
-      quoteNumber: '',
+      // Set by the page, never by the customer, and held in the order data so
+      // the printed copy and the submitted row read it from one place.
+      barcodeType: VARIANT,
       companyName: '', contactName: '', contactEmail: '',
       address: '', city: '', stateProvince: '', postalCode: '', country: 'Canada',
       logoChoice: '', logoFileName: '', logoFileData: '',
@@ -351,7 +364,6 @@
     // The label order document's reference is this number, not the internal
     // THL- ref, so it leads the form. Graham sends the quote before asking the
     // customer to fill this in, so they always have it in front of them.
-    add('quoteNumber', 'ToolHound Quote Number *', null, 'e.g. GC-24-175A');
     card.appendChild(el('div', { class: 'hint', style: 'margin-top:-10px;margin-bottom:16px;' },
       'On the quote ToolHound sent you. This reference follows the order all '
       + 'the way through, so it needs to match.'));
@@ -384,7 +396,7 @@
 
     card.appendChild(actionBar(null, 'Continue', function () {
       var ok = true;
-      ['quoteNumber', 'companyName', 'contactName', 'contactEmail', 'address',
+      ['companyName', 'contactName', 'contactEmail', 'address',
         'city', 'stateProvince', 'postalCode', 'country'].forEach(function (k) {
         var blank = isBlank(d[k]);
         if (k === 'contactEmail' && !blank && !isEmail(d[k])) {
@@ -561,7 +573,8 @@
           }, 'yn');
         colorHost.appendChild(colorField);
         colorHost.appendChild(el('div', { class: 'hint', style: 'margin-top:-4px;margin-bottom:16px;' },
-          'Full-colour printing includes an additional surcharge.'));
+          'Full colour adds a ' + (CONFIG.colourSurcharge || '$10')
+          + ' surcharge, as shown on your quote.'));
       } else {
         // No colour question was asked, so carry the answer it implies: the
         // column is required, and a stale Yes from a logo the customer has
@@ -889,7 +902,6 @@
 
     var b1 = el('div', { class: 'review-block' });
     b1.appendChild(el('h3', {}, 'Customer & Shipping'));
-    b1.appendChild(reviewRow('Quote Number', d.quoteNumber));
     b1.appendChild(reviewRow('Company', d.companyName));
     b1.appendChild(reviewRow('Contact', d.contactName));
     b1.appendChild(reviewRow('Email', d.contactEmail));
@@ -901,6 +913,7 @@
 
     var b2 = el('div', { class: 'review-block' });
     b2.appendChild(el('h3', {}, 'Label Specifications'));
+    b2.appendChild(reviewRow('Code Type', VARIANT_DEF ? VARIANT_DEF.label : ''));
     b2.appendChild(reviewRow('Logo / Text', LOGO_CHOICE_LABELS[d.logoChoice]));
     if (d.logoChoice === 'custom_logo') b2.appendChild(reviewRow('Logo File', d.logoFileName));
     if (d.logoChoice === 'custom_text') {
@@ -1285,7 +1298,11 @@
   function buildRow(d, orderRef) {
     return {
       order_ref: orderRef,
-      quote_number: d.quoteNumber.trim() ? d.quoteNumber.trim() : null,
+      // No quote number: the form stopped asking. Quote numbers duplicate
+      // across orders, so they were never a key. The shipping address is, and
+      // it is on this order, on Metalcraft's invoice to us and on ours to the
+      // customer. The column stays for the orders that already carry one.
+      barcode_type: d.barcodeType,
       company_name: d.companyName.trim(),
       contact_name: d.contactName.trim(),
       contact_email: d.contactEmail.trim(),
@@ -1566,6 +1583,16 @@
     if (!card) return;
     card.innerHTML = '';
 
+    // A page that did not declare which of the two forms it is cannot produce
+    // an order anyone can manufacture, so it says so rather than collecting
+    // one. This is a deploy fault, not a customer one, hence the wording.
+    if (!VARIANT_DEF) {
+      card.appendChild(el('div', { class: 'form-error', role: 'alert' },
+        'This order form is not configured correctly and cannot accept an '
+        + 'order. Please contact ToolHound for the right link.'));
+      return;
+    }
+
     if (state.step < 4) {
       renderStepper(card);
       card.appendChild(el('div', { class: 'step-label' },
@@ -1583,6 +1610,7 @@
   // Exposed for tests.
   window.__TOOLHOUND_FORM__ = {
     state: state,
+    variant: VARIANT,
     render: render,
     makeOrderRef: makeOrderRef,
     buildRow: buildRow,

@@ -126,6 +126,13 @@
     return v.toLocaleString('en-CA');
   }
 
+  /** Only the two wordings config declares. Never a symbology name. */
+  function barcodeText(cfg, barcodeType) {
+    var types = cfg.barcodeTypes || {};
+    var def = types[barcodeType];
+    return def ? (def.docName || def.label) : '—';
+  }
+
   function artworkText(logoChoice) {
     return LOGO_LABELS[logoChoice] || txt(logoChoice) || '—';
   }
@@ -197,7 +204,7 @@
       textLines: (d.textLines || []).map(function (l) { return String(l || '').trim(); })
         .filter(function (l) { return l.length > 0; }),
       fullColor: d.fullColor,
-      adhesive: d.adhesive,
+      barcodeType: d.barcodeType,
       labelType: d.labelType,
       labelWidthIn: d.labelWidthIn,
       labelHeightIn: d.labelHeightIn,
@@ -228,7 +235,7 @@
       logoFileName: row.logo_file_name,
       textLines: (row.text_lines || []).filter(Boolean),
       fullColor: row.full_color,
-      adhesive: row.adhesive,
+      barcodeType: row.barcode_type,
       labelType: row.label_type,
       labelWidthIn: row.label_width_in,
       labelHeightIn: row.label_height_in,
@@ -306,11 +313,12 @@
     // is that wording and nothing else.
     var stock = materialText(cfg, o.labelType);
 
-    // The reference is the quote number. Where an order predates that field
-    // the internal reference stands in rather than leaving the sheet unmarked,
-    // because a document with no reference at all is worse than one with an
-    // internal one.
-    var ref = txt(o.quoteNumber).trim() || txt(o.orderRef).trim();
+    // The order reference, always. It used to lead with the quote number, which
+    // turned out not to be a key at all: GC-24-175A is on the PCL order and on
+    // the NWT order both. The THL- ref is unique by construction, and the
+    // thing that actually ties this order to Metalcraft's invoice and to ours
+    // is the shipping address, which is on the sheet in its own panel.
+    var ref = txt(o.orderRef).trim() || txt(o.quoteNumber).trim();
 
     var doc = el('div', { class: 'order-doc' });
 
@@ -318,7 +326,7 @@
     var title = el('div', { class: 'od-title' }, [
       el('div', { class: 'od-dt', text: 'Label Order' })
     ]);
-    [['Quote no.', ref], ['Issued', fmtDate(o.issuedAt)], ['Page', '1 of 1']]
+    [['Order no.', ref], ['Issued', fmtDate(o.issuedAt)], ['Page', '1 of 1']]
       .forEach(function (pair) {
         title.appendChild(el('div', { class: 'od-drow' }, [
           el('span', { class: 'od-lab', text: pair[0] }),
@@ -439,14 +447,16 @@
     var artwork = el('div', { class: 'od-kv' });
     labelled('Artwork', artworkText(o.logoChoice))
       .forEach(function (n) { artwork.appendChild(n); });
-    // Adhesive is not asked for on the form, so it comes from config and is
-    // deliberately blank until someone sets it. It is NOT defaulted to a
-    // guess: the two orders that recorded one recorded different answers
-    // (Millstone "pressure sensitive acrylic", Bureau Veritas "MC778 3.5 mil
-    // kraft liner"), so a hardcoded value would be a spec asserted to the
-    // printer on every order with nothing behind it.
-    labelled('Adhesive', txt(o.adhesive) || txt(cfg.defaultAdhesive))
+    // The whole point of two forms. Only ever the two wordings from config; no
+    // linear symbology is named, because nothing in Metalcraft's paperwork
+    // names one and inventing "Code 128" would be worse than saying less.
+    labelled('Code type', barcodeText(cfg, o.barcodeType))
       .forEach(function (n) { artwork.appendChild(n); });
+    // No adhesive row. It follows from the material -- one for polypropylene,
+    // one for aluminium foil -- and is already right by default on
+    // Metalcraft's side, so printing it only invites a question about a choice
+    // nobody makes.
+
     labelled('Logo file name (if applicable)',
       o.logoChoice === 'custom_logo' ? txt(o.logoFileName) : '')
       .forEach(function (n) { artwork.appendChild(n); });
@@ -672,8 +682,7 @@
     // artwork
     h += emSection('Artwork');
     h += emRow('Type', artworkText(o.logoChoice));
-    var adhesive = txt(o.adhesive) || txt(cfg.defaultAdhesive);
-    if (adhesive) h += emRow('Adhesive', adhesive);
+    h += emRow('Code type', barcodeText(cfg, o.barcodeType));
     if (o.logoChoice === 'custom_text') {
       h += emRow('Text on label', (o.textLines || []).join('  /  '));
     }
@@ -765,8 +774,7 @@
     L.push('');
     L.push('ARTWORK');
     L.push('  Type: ' + artworkText(o.logoChoice));
-    var adhesive = txt(o.adhesive) || txt(cfg.defaultAdhesive);
-    if (adhesive) L.push('  Adhesive: ' + adhesive);
+    L.push('  Code type: ' + barcodeText(cfg, o.barcodeType));
     if (o.logoChoice === 'custom_text') {
       L.push('  Text on label: ' + (o.textLines || []).join('  /  '));
     }

@@ -132,6 +132,36 @@ window.TOOLHOUND_CONFIG = {
     }
   ],
 
+  // The two forms.
+  //
+  // Barcode symbology is not a question on the form. Sales hands the customer
+  // the link for the one they are buying, and each page declares its own
+  // variant, so a customer is never asked to choose between two things they
+  // have no basis to choose between.
+  //
+  // Only these two wordings appear anywhere. Nothing here names a specific
+  // linear symbology: Metalcraft's own paperwork for order 774159 records "QR"
+  // and "QR HRI" and nothing else, so "Code 128" or "Code 39" on a ToolHound
+  // document would be an invention.
+  barcodeTypes: {
+    linear: { label: 'Linear barcode', docName: 'Linear barcode' },
+    qr: { label: 'QR code', docName: 'QR code' }
+  },
+
+  // Quantities for a custom run. The old list stepped in 500s, which is the
+  // shape of the generic stock ToolHound labels and not of a custom order.
+  quantityOptions: [3000, 5000, 10000],
+
+  // Stated on the form because it is already on the quote the customer has.
+  colourSurcharge: '$10',
+
+  // RETAINED, NOT SHOWN. The adhesive is determined by the material -- one for
+  // polypropylene, one for aluminium foil -- and is already right by default
+  // on Metalcraft's side, so asking or stating it only invites a question.
+  // The column and the three values already recorded are left in the database
+  // rather than dropped, because deleting them is irreversible and showing
+  // them is a one-line change if that call is revisited.
+  //
   // The adhesive stated on the label order document.
   //
   // Blank on purpose, so the document shows a dash rather than a guess. The
