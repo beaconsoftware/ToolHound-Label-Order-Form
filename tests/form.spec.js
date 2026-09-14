@@ -1463,7 +1463,10 @@ test.describe('custom order quantities', () => {
       await page.getByRole('button', { name: 'Continue' }).click();
       await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
 
-      await expect(page.getByText(/\$10 surcharge/)).toBeVisible();
+      // Percent, not dollars: the one invoice that itemises it reads
+      // "(Logo) 10% color surcharge".
+      await expect(page.getByText(/10% surcharge/)).toBeVisible();
+      await expect(page.getByText(/\$10/)).toHaveCount(0);
     });
 
   test('no surcharge note where there is no logo to colour', async ({ page }) => {
