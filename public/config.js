@@ -153,7 +153,12 @@ window.TOOLHOUND_CONFIG = {
   quantityOptions: [3000, 5000, 10000],
 
   // Stated on the form because it is already on the quote the customer has.
-  colourSurcharge: '$10',
+  //
+  // Ten percent, not ten dollars. The one invoice in the QuickBooks history
+  // that itemises it reads "(Logo) 10% color surcharge", and Ian confirmed the
+  // percentage. It reads into the sentence as "adds a 10% surcharge", so the
+  // wording needs no special case.
+  colourSurcharge: '10%',
 
   // RETAINED, NOT SHOWN. The adhesive is determined by the material -- one for
   // polypropylene, one for aluminium foil -- and is already right by default

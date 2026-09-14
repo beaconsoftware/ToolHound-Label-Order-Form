@@ -573,7 +573,7 @@
           }, 'yn');
         colorHost.appendChild(colorField);
         colorHost.appendChild(el('div', { class: 'hint', style: 'margin-top:-4px;margin-bottom:16px;' },
-          'Full colour adds a ' + (CONFIG.colourSurcharge || '$10')
+          'Full colour adds a ' + (CONFIG.colourSurcharge || '10%')
           + ' surcharge, as shown on your quote.'));
       } else {
         // No colour question was asked, so carry the answer it implies: the
