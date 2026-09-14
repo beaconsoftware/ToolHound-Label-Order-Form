@@ -223,6 +223,17 @@
     text-align:right;
   }
 
+  /* The landing page's two links wear the same shape as a form choice, so the
+     page reads as one decision rather than as navigation. */
+  a.choice.pick{
+    text-decoration:none;
+    color:var(--ink);
+    justify-content:space-between;
+  }
+  a.choice.pick:hover{border-color:var(--red);background:rgba(207,56,44,.04);}
+  a.choice.pick .clabel{font-weight:600;}
+  a.choice.pick::after{content:"\2192";color:var(--red);font-weight:700;}
+
   .yn{display:flex;gap:10px;}
   .yn .choice{flex:1;justify-content:center;}
 

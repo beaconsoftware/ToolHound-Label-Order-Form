@@ -3,17 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ToolHound Label Order Authorization</title>
-<meta name="description" content="Submit and authorize a custom ToolHound label order.">
+<title>ToolHound Label Orders</title>
+<meta name="description" content="Choose the ToolHound label order form for your order.">
 <meta name="robots" content="noindex">
 <link rel="icon" href="toolhound-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Dancing+Script:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
+<!--
+  Not an order form.
+
+  There are two forms, one per code type, and sales sends the customer the link
+  for the one they are buying so that nobody is asked to choose a symbology
+  they have no basis to choose. This page exists only so that a link to the
+  bare domain, or an older bookmark, lands somewhere that explains itself
+  instead of 404ing or presenting a form with a question on it that should not
+  be there.
+-->
 <header class="topbar">
   <img class="logo-img" src="toolhound-logo.png" alt="ToolHound">
   <div class="topbar-right" id="supportPhone"></div>
@@ -21,32 +31,45 @@
 
 <div class="hero">
   <span class="eyebrow">Custom Label Order</span>
-  <h1>Label Order Authorization</h1>
-  <p>Please review the specifications below carefully. These labels are custom manufactured based on the information provided and approved by you. Custom label orders are nonreturnable once approved and submitted for production.</p>
+  <h1>Which label order form?</h1>
+  <p>Your ToolHound contact will normally send you a direct link to the right
+  form. If you reached this page instead, choose the code type from your quote.</p>
 </div>
 
 <main class="wrap">
-  <div class="card" id="card">
-    <noscript>
-      <p>This order form needs JavaScript enabled. Please enable JavaScript, or
-      contact ToolHound directly to place your label order.</p>
-    </noscript>
+  <div class="card">
+    <div class="choice-group">
+      <a class="choice pick" href="linear-barcode">
+        <span class="clabel">Linear barcode labels</span>
+      </a>
+      <a class="choice pick" href="qr-code">
+        <span class="clabel">QR code labels</span>
+      </a>
+    </div>
+    <div class="hint" style="margin-top:14px;">
+      Not sure which you need? Contact ToolHound and we will send you the right
+      link rather than have you guess.
+    </div>
+    <div class="contact-card" id="contactCard"></div>
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
-<script src="order-doc.js"></script>
 <script>
-  // Keep the phone number in one place: config.js.
   (function () {
+    var cfg = window.TOOLHOUND_CONFIG || {};
     var elPhone = document.getElementById('supportPhone');
-    if (elPhone && window.TOOLHOUND_CONFIG) {
-      elPhone.textContent = window.TOOLHOUND_CONFIG.supportPhone || '';
+    if (elPhone) elPhone.textContent = cfg.supportPhone || '';
+    var card = document.getElementById('contactCard');
+    var c = cfg.contact || {};
+    if (card && (c.salesEmail || cfg.supportPhone)) {
+      card.innerHTML = '<div class="contact-lines">'
+        + (c.salesEmail ? '<a href="mailto:' + c.salesEmail + '">' + c.salesEmail + '</a><br>' : '')
+        + (cfg.supportPhone || '')
+        + '</div>';
     }
   })();
 </script>
-<script src="app.js"></script>
 
 </body>
 </html>

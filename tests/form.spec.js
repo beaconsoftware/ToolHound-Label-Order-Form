@@ -37,9 +37,13 @@ async function stubDb(page, { failWith = null, failFirstNTimes = 0 } = {}) {
   );
 }
 
+// The two forms differ only by which code they are for, so the suite drives
+// the linear one by default and names the QR page where that is the point.
+const FORM_URL = '/linear-barcode.html';
+const QR_FORM_URL = '/qr-code.html';
+
 async function fillStep1(page, overrides = {}) {
   const v = {
-    quote: 'GC-24-175A',
     company: 'Acme Industrial',
     contact: 'Dana Reyes',
     email: 'dana@acme.example',
@@ -50,7 +54,6 @@ async function fillStep1(page, overrides = {}) {
     country: 'Canada',
     ...overrides
   };
-  await page.getByLabel('ToolHound Quote Number *').fill(v.quote);
   await page.getByLabel('Company Name *').fill(v.company);
   await page.getByLabel('Customer Contact Name *').fill(v.contact);
   await page.getByLabel('Customer Contact Email *').fill(v.email);
@@ -61,7 +64,7 @@ async function fillStep1(page, overrides = {}) {
   await page.getByLabel('Country *').fill(v.country);
 }
 
-const QUANTITY_OPTIONS = [500, 1000, 1500, 2000, 2500, 5000, 7500, 10000];
+const QUANTITY_OPTIONS = [3000, 5000, 10000];
 
 /** Pick the quantity dropdown option when it's a standard increment, else fall
  *  back to the "Other" free-entry input. */
@@ -97,7 +100,7 @@ async function fillStep4(page, name = 'Dana Reyes') {
 
 test.beforeEach(async ({ page }) => {
   await stubDb(page);
-  await page.goto('/index.html');
+  await page.goto(FORM_URL);
 });
 
 /**
@@ -106,13 +109,13 @@ test.beforeEach(async ({ page }) => {
  * step owns the field.
  */
 async function gotoForm(page) {
-  await page.goto('/index.html');
+  await page.goto(FORM_URL);
 }
 
 async function submitOrder(page, overrides = {}) {
-  const { quantity = '500', seqStart = '1000',
-          authorizedName = 'Dana Reyes', ...step1 } = overrides;
-  await gotoForm(page);
+  const { quantity = '5000', seqStart = '1000',
+          authorizedName = 'Dana Reyes', url = FORM_URL, ...step1 } = overrides;
+  await page.goto(url);
   await fillStep1(page, step1);
   await page.getByRole('button', { name: 'Continue' }).click();
   await fillStep2(page, { quantity, seqStart });
@@ -427,7 +430,7 @@ test.describe('step 4 authorization', () => {
 test.describe('submission failures', () => {
   test('shows an inline error and lets the customer retry', async ({ page }) => {
     await stubDb(page, { failWith: { code: 'PGRST301', message: 'boom' } });
-    await page.goto('/index.html');
+    await page.goto(FORM_URL);
 
     await fillStep1(page);
     await page.getByRole('button', { name: 'Continue' }).click();
@@ -448,7 +451,7 @@ test.describe('submission failures', () => {
   test('explains a constraint rejection in terms the customer can act on',
     async ({ page }) => {
       await stubDb(page, { failWith: { code: '23514', message: 'check violation' } });
-      await page.goto('/index.html');
+      await page.goto(FORM_URL);
 
       await fillStep1(page);
       await page.getByRole('button', { name: 'Continue' }).click();
@@ -469,7 +472,7 @@ test.describe('submission failures', () => {
         failWith: { code: '23505', message: 'duplicate key' },
         failFirstNTimes: 1
       });
-      await page.goto('/index.html');
+      await page.goto(FORM_URL);
 
       await fillStep1(page);
       await page.getByRole('button', { name: 'Continue' }).click();
@@ -508,8 +511,8 @@ test.describe('confirmation record', () => {
       await expect(print).toContainText('Acme Industrial');
       await expect(print).toContainText('cannot be returned');
       await expect(print).toContainText('Dana Reyes');
-      // The reference on the sheet is the quote number, not the internal ref.
-      await expect(print).toContainText('GC-24-175A');
+      // The reference on the sheet is the internal order ref.
+      await expect(print).toContainText('THL-');
     });
 
   // The confirmation must not promise an email that nothing sends.
@@ -1047,7 +1050,7 @@ test.describe('the public form submits as anon, never as a signed-in user', () =
   test('creates its client with no session read, kept or refreshed',
     async ({ page }) => {
       await stubCreateClient(page);
-      await page.goto('/index.html');
+      await page.goto(FORM_URL);
 
       // A staff session left in localStorage by the dashboard, under the key
       // supabase-js uses by default for this project.
@@ -1078,7 +1081,7 @@ test.describe('the public form submits as anon, never as a signed-in user', () =
 
   test('cannot collide with the dashboard session key', async ({ page }) => {
     await stubCreateClient(page);
-    await page.goto('/index.html');
+    await page.goto(FORM_URL);
     await fillStep1(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await fillStep2(page);
@@ -1183,27 +1186,32 @@ test.describe('signature: type or draw', () => {
    --------------------------------------------------------------------------- */
 
 test.describe('label order document', () => {
-  test('the quote number is required, and names itself when missing', async ({ page }) => {
+  // Quote numbers duplicate across orders -- GC-24-175A is on two of the four
+  // live ones -- so the form stopped asking and the document stopped leading
+  // with one.
+  test('the form does not ask for a quote number', async ({ page }) => {
     await gotoForm(page);
-    await fillStep1(page, { quote: '' });
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await expect(page.locator('.field', { hasText: 'ToolHound Quote Number' })
-      .locator('.err-msg')).toBeVisible();
-    // And the form has not advanced.
-    await expect(page.getByLabel('Company Name *')).toBeVisible();
+    await expect(page.getByLabel(/Quote Number/i)).toHaveCount(0);
+    await expect(page.locator('.card')).not.toContainText('Quote');
   });
 
-  test('the printed document carries the quote number as the reference',
+  test('the printed document carries the order reference throughout',
     async ({ page }) => {
-      await submitOrder(page, { quote: 'GC-26-175D' });
+      await submitOrder(page);
+      const ref = await page.evaluate(() => window.__TOOLHOUND_FORM__.state.orderRef);
+      expect(ref).toMatch(/^THL-/);
+
       await page.emulateMedia({ media: 'print' });
       const doc = page.locator('.order-doc');
       await expect(doc).toHaveCount(1);
-      // Header, reference strip and footer all carry it: the whole point is
-      // that Metalcraft can quote it back from anywhere on the page.
-      await expect(doc.locator('.od-dv', { hasText: 'GC-26-175D' })).toBeVisible();
-      await expect(doc.locator('.od-rv', { hasText: 'GC-26-175D' })).toBeVisible();
-      await expect(doc.locator('.od-foot')).toContainText('GC-26-175D');
+      // Masthead, reference strip and footer: the supplier can quote it back
+      // from anywhere on the page.
+      await expect(doc.locator('.od-dv', { hasText: ref })).toBeVisible();
+      await expect(doc.locator('.od-rv', { hasText: ref })).toBeVisible();
+      await expect(doc.locator('.od-foot')).toContainText(ref);
+      // Labelled as an order number, not a quote number it no longer is.
+      await expect(doc).toContainText('Order no.');
+      await expect(doc).not.toContainText('Quote no.');
     });
 
   test('the shipping address is the only address on the sheet', async ({ page }) => {
@@ -1286,4 +1294,183 @@ test.describe('label order document', () => {
       expect(cases.noDigits).toMatchObject({ prefix: 'ABC', from: '', to: '' });
       expect(cases.noQuantity).toMatchObject({ from: '1000', to: '' });
     });
+});
+
+/* ---------------------------------------------------------------------------
+   Two forms, one per code type
+
+   The split exists so that nobody is asked to choose a symbology they have no
+   basis to choose. What has to hold: each page knows which it is, neither asks,
+   both submit the right value, and the pages cannot drift apart.
+   --------------------------------------------------------------------------- */
+
+test.describe('two forms', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const pub = (f) => path.join(__dirname, '..', 'public', f);
+
+  test('neither form asks the customer which code they want', async ({ page }) => {
+    for (const url of [FORM_URL, QR_FORM_URL]) {
+      await page.goto(url);
+      await expect(page.getByRole('heading', { name: /Customer & Shipping/ }))
+        .toBeVisible();
+      // No symbology question anywhere in the form.
+      await expect(page.getByText(/barcode type/i)).toHaveCount(0);
+      await expect(page.getByRole('radio', { name: /QR/i })).toHaveCount(0);
+      await expect(page.getByRole('radio', { name: /Linear/i })).toHaveCount(0);
+    }
+  });
+
+  test('each form submits its own code type', async ({ page }) => {
+    for (const [url, expected] of [[FORM_URL, 'linear'], [QR_FORM_URL, 'qr']]) {
+      await stubDb(page);
+      await submitOrder(page, { url });
+      const row = (await page.evaluate(() => window.__INSERTED__)).slice(-1)[0];
+      expect(row.barcode_type).toBe(expected);
+      // And no quote number rides along.
+      expect(row.quote_number).toBeUndefined();
+    }
+  });
+
+  test('the QR form states QR on the document, the linear form states linear',
+    async ({ page }) => {
+      for (const [url, wording, absent] of [
+        [FORM_URL, 'Linear barcode', 'QR code'],
+        [QR_FORM_URL, 'QR code', 'Linear barcode']
+      ]) {
+        // Reset the media each pass: print CSS hides the action bar, so a
+        // second iteration under it cannot find the Continue button.
+        await page.emulateMedia({ media: 'screen' });
+        await stubDb(page);
+        await submitOrder(page, { url });
+        await page.emulateMedia({ media: 'print' });
+        const doc = page.locator('.order-doc');
+        await expect(doc).toContainText('Code type');
+        await expect(doc).toContainText(wording);
+        await expect(doc).not.toContainText(absent);
+        // No invented symbology, ever.
+        await expect(doc).not.toContainText('Code 128');
+        await expect(doc).not.toContainText('Code 39');
+        await expect(doc).not.toContainText('Data Matrix');
+      }
+    });
+
+  // The customer should be able to see they were sent the right link before
+  // they authorise a nonreturnable order.
+  test('the review page states which code the order is for', async ({ page }) => {
+    for (const [url, wording] of [[FORM_URL, 'Linear barcode'], [QR_FORM_URL, 'QR code']]) {
+      await page.emulateMedia({ media: 'screen' });
+      await stubDb(page);
+      await page.goto(url);
+      await fillStep1(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await fillStep2(page, { quantity: '5000', seqStart: '1000' });
+      await page.getByRole('button', { name: 'Continue' }).click();
+
+      const block = page.locator('.review-block', { hasText: 'Label Specifications' });
+      await expect(block).toContainText('Code Type');
+      await expect(block).toContainText(wording);
+    }
+  });
+
+  // A change made to one page and not the other is the failure mode of having
+  // two near-identical files and no build step. This is the guard.
+  test('the two pages are identical but for their variant and wording', () => {
+    const normalise = (html) => html
+      .replace(/window\.TOOLHOUND_FORM_VARIANT = '[a-z]+';/, 'VARIANT')
+      .replace(/<title>[^<]*<\/title>/, 'TITLE')
+      .replace(/content="Submit and authorize[^"]*"/, 'DESCRIPTION')
+      .replace(/<span class="eyebrow">[^<]*<\/span>/, 'EYEBROW');
+
+    const linear = normalise(fs.readFileSync(pub('linear-barcode.html'), 'utf8'));
+    const qr = normalise(fs.readFileSync(pub('qr-code.html'), 'utf8'));
+    expect(qr).toBe(linear);
+  });
+
+  test('each page declares a variant at all', () => {
+    for (const f of ['linear-barcode.html', 'qr-code.html']) {
+      const html = fs.readFileSync(pub(f), 'utf8');
+      expect(html).toMatch(/window\.TOOLHOUND_FORM_VARIANT = '(linear|qr)';/);
+      // Declared before app.js reads it.
+      expect(html.indexOf('TOOLHOUND_FORM_VARIANT'))
+        .toBeLessThan(html.indexOf('app.js'));
+    }
+  });
+
+  // A page with no variant cannot say what to print, so it must refuse rather
+  // than collect an order the printer has to ask about.
+  test('a form with no variant refuses to collect an order', async ({ page }) => {
+    await stubDb(page);
+    await page.goto(FORM_URL);
+    await page.evaluate(() => {
+      window.TOOLHOUND_FORM_VARIANT = '';
+    });
+    // index.html is not a form and carries no variant, so it is the real case.
+    await page.goto('/index.html');
+    await expect(page.getByRole('heading', { name: /Which label order form/ }))
+      .toBeVisible();
+    await expect(page.getByLabel('Company Name *')).toHaveCount(0);
+  });
+
+  test('the landing page links to both forms and nothing else', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.getByRole('link', { name: /Linear barcode labels/ }))
+      .toHaveAttribute('href', 'linear-barcode');
+    await expect(page.getByRole('link', { name: /QR code labels/ }))
+      .toHaveAttribute('href', 'qr-code');
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   Quantities and the colour surcharge
+   --------------------------------------------------------------------------- */
+
+test.describe('custom order quantities', () => {
+  test('offers 3,000 / 5,000 / 10,000 and nothing from the stock ladder',
+    async ({ page }) => {
+      await gotoForm(page);
+      await fillStep1(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+
+      const opts = await page.getByLabel('Quantity *')
+        .locator('option').allInnerTexts();
+      const values = await page.getByLabel('Quantity *')
+        .locator('option').evaluateAll((os) => os.map((o) => o.value));
+
+      expect(values).toEqual(['', '3000', '5000', '10000', 'other']);
+      expect(opts.join(' ')).toContain('3,000 labels');
+      expect(opts.join(' ')).toContain('5,000 labels');
+      expect(opts.join(' ')).toContain('10,000 labels');
+      // The 500-step stock ladder is gone.
+      for (const gone of ['500 labels', '1,500 labels', '2,500 labels',
+                          '7,500 labels']) {
+        expect(opts.join(' ')).not.toContain(gone);
+      }
+    });
+
+  // NWT ordered 500 round aluminium labels and Phoenix 9,000, so the exact
+  // entry has to survive or those orders cannot be placed at all.
+  test('a quantity outside the three is still orderable', async ({ page }) => {
+    await submitOrder(page, { quantity: '500' });
+    const row = (await page.evaluate(() => window.__INSERTED__))[0];
+    expect(row.quantity).toBe(500);
+  });
+
+  test('names the colour surcharge, because the quote already does',
+    async ({ page }) => {
+      await gotoForm(page);
+      await fillStep1(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+
+      await expect(page.getByText(/\$10 surcharge/)).toBeVisible();
+    });
+
+  test('no surcharge note where there is no logo to colour', async ({ page }) => {
+    await gotoForm(page);
+    await fillStep1(page);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('radio', { name: 'Custom Text' }).check();
+    await expect(page.getByText(/surcharge/)).toHaveCount(0);
+  });
 });

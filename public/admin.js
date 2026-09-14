@@ -92,10 +92,11 @@
     'address', 'city', 'state_province', 'postal_code', 'country',
     'logo_choice', 'logo_file_name', 'text_lines', 'full_color',
     'quantity', 'start_seq', 'seq_start', 'instructions',
-    // adhesive is on the document Metalcraft works from, so leaving it out of
-    // this list would print a dash on every order that has one -- the same way
-    // quote_number printed the internal ref.
-    'label_type', 'adhesive', 'label_width_in', 'label_height_in',
+    // barcode_type is on the document Metalcraft works from, so leaving it out
+    // of this list would print a dash on every order -- the same way
+    // quote_number printed the internal ref. adhesive is deliberately absent:
+    // the column is kept but the document no longer states it.
+    'label_type', 'barcode_type', 'label_width_in', 'label_height_in',
     'ship_to_phone', 'attention_name', 'customer_po',
     'authorized_name', 'approval_date'
   ].join(',');
@@ -399,7 +400,7 @@
     'address', 'city', 'state_province', 'postal_code', 'country',
     'attention_name', 'ship_to_phone', 'customer_po',
     'logo_choice', 'logo_file_name', 'text_lines', 'full_color',
-    'label_type', 'adhesive', 'label_width_in', 'label_height_in',
+    'label_type', 'barcode_type', 'label_width_in', 'label_height_in',
     'quantity', 'seq_start', 'start_seq', 'instructions'
   ];
 
@@ -548,9 +549,10 @@
   /**
    * Write one or more staff-editable fields on an order.
    *
-   * Shared by internal notes and the adhesive rather than copied per field: a
-   * second copy is a second place to forget to fold the returned row back into
-   * state, which is how a saved value stops showing until a reload.
+   * Shared by internal notes and the starting label number rather than copied
+   * per field: a second copy is a second place to forget to fold the returned
+   * row back into state, which is how a saved value stops showing until a
+   * reload.
    */
   function saveOrderPatch(order, patch, button, statusEl, buttonLabel) {
     var db = getDb();
@@ -1365,31 +1367,6 @@
           + 'than printing a number nobody has agreed.'
       }),
       seqStatus
-    ]));
-
-    var adhesiveInput = el('input', {
-      type: 'text',
-      'aria-label': 'Adhesive',
-      placeholder: 'e.g. Pressure Sensitive Acrylic Adhesive'
-    });
-    adhesiveInput.value = order.adhesive || '';
-    var adhesiveStatus = el('div', { class: 'hint', role: 'status' });
-    var adhesiveBtn = el('button', {}, 'Save adhesive');
-    adhesiveBtn.addEventListener('click', function () {
-      saveOrderPatch(order, { adhesive: adhesiveInput.value.trim() || null },
-        adhesiveBtn, adhesiveStatus, 'Save adhesive');
-    });
-    drawer.appendChild(el('div', { class: 'review-block' }, [
-      el('h3', { text: 'Adhesive' }),
-      el('div', { class: 'field' }, [adhesiveInput]),
-      adhesiveBtn,
-      el('div', {
-        class: 'artwork-note',
-        text: 'Prints on the vendor copy. Staff-set rather than asked on the '
-          + 'form, because it is agreed with Metalcraft and a customer has no '
-          + 'way to know it. Blank prints as a dash.'
-      }),
-      adhesiveStatus
     ]));
 
     var notesArea = el('textarea', { rows: '4', 'aria-label': 'Internal notes' });

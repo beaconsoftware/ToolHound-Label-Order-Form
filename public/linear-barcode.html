@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ToolHound Linear Barcode Label Order Authorization</title>
+<meta name="description" content="Submit and authorize a custom ToolHound linear barcode label order.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="toolhound-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Dancing+Script:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <img class="logo-img" src="toolhound-logo.png" alt="ToolHound">
+  <div class="topbar-right" id="supportPhone"></div>
+</header>
+
+<div class="hero">
+  <span class="eyebrow">Custom Linear Barcode Label Order</span>
+  <h1>Label Order Authorization</h1>
+  <p>Please review the specifications below carefully. These labels are custom manufactured based on the information provided and approved by you. Custom label orders are nonreturnable once approved and submitted for production.</p>
+</div>
+
+<main class="wrap">
+  <div class="card" id="card">
+    <noscript>
+      <p>This order form needs JavaScript enabled. Please enable JavaScript, or
+      contact ToolHound directly to place your label order.</p>
+    </noscript>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+  // Which of the two forms this page is. Not a field: sales sends the
+  // customer the link for what they are buying.
+  //
+  // This page and its sibling are identical but for this line, the title, the
+  // description and the eyebrow. tests/form.spec.js asserts exactly that, so a
+  // change made to one and not the other fails rather than shipping.
+  window.TOOLHOUND_FORM_VARIANT = 'linear';
+</script>
+<script src="config.js"></script>
+<script src="order-doc.js"></script>
+<script>
+  // Keep the phone number in one place: config.js.
+  (function () {
+    var elPhone = document.getElementById('supportPhone');
+    if (elPhone && window.TOOLHOUND_CONFIG) {
+      elPhone.textContent = window.TOOLHOUND_CONFIG.supportPhone || '';
+    }
+  })();
+</script>
+<script src="app.js"></script>
+
+</body>
+</html>
