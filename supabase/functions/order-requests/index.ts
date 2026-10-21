@@ -30,8 +30,12 @@ async function staff(req: Request) {
   const bearer = (req.headers.get('authorization') || '').replace(/^Bearer /i, '');
   const { data, error } = await db.auth.getUser(bearer);
   if (error || !data.user?.email || !data.user.email_confirmed_at) throw new Error('Sign in with an authorized staff account.');
-  const address = data.user.email.toLowerCase();
-  if (!['beaconsoftware.com', 'toolhound.com'].includes(address.split('@')[1])) throw new Error('This account does not have intake access.');
+  // Use the same current-account authorization as RLS, under the caller's JWT.
+  const caller = createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), {
+    auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${bearer}` } }
+  });
+  const permission = await caller.rpc('is_label_order_staff');
+  if (permission.error || permission.data !== true) throw new Error('This account does not have intake access.');
   return data.user;
 }
 function withReceipt(r: any) {
@@ -63,14 +67,38 @@ async function resultWithLink(r: any) {
   if (await hash(value) !== r.token_hash) throw new Error('Link signing key changed. Restore the original key before recovering this link.');
   const route = r.barcode_type === 'qr' ? 'qr-code' : 'linear-barcode';
   // Fragment keeps the bearer token out of web-server logs and Referer headers.
-  return { ...summary(r), customer_url: `${env('ORDER_APP_URL')}/${route}#request=${r.id}&token=${value}` };
+  return { ...summary(r), customer_url: `${r.app_origin || env('ORDER_APP_URL').replace(/\/$/, '')}/${route}#request=${r.id}&token=${value}` };
 }
 function text(value: unknown, max = 200) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new Error('Complete all required fields within their length limits.');
   return value.trim();
 }
-async function handle(req: Request) {
-  const body = await req.json();
+// Bound bytes while streaming, including chunked requests without Content-Length.
+// 10 MB quote PDFs encode to ~14 MB; ordinary customer submissions are smaller.
+const MAX_REQUEST_BYTES = 14_500_000;
+async function readJson(req: Request) {
+  if (Number(req.headers.get('content-length')) > MAX_REQUEST_BYTES) throw new Error('Request is too large.');
+  const reader = req.body?.getReader();
+  if (!reader) throw new Error('Invalid request body.');
+  const decoder = new TextDecoder();
+  let size = 0, json = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_REQUEST_BYTES) { await reader.cancel(); throw new Error('Request is too large.'); }
+      json += decoder.decode(value, { stream: true });
+    }
+  } finally { reader.releaseLock(); }
+  let body;
+  try { body = JSON.parse(json + decoder.decode()); } catch { throw new Error('Invalid JSON request.'); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid request body.');
+  return body;
+}
+
+async function handle(req: Request, appOrigin: string) {
+  const body = await readJson(req);
   if (body.action === 'load' || body.action === 'submit') {
     if (!uuid.test(body.id || '') || !/^[0-9a-f]{64}$/.test(body.token || '')) throw new Error('This customer link is invalid. Contact ToolHound for a new link.');
     const digest = await hash(body.token);
@@ -148,7 +176,7 @@ async function handle(req: Request) {
     const customerToken = await token(body.id);
     const values = { id: body.id, created_by: user.id, mode: env('ORDER_REQUESTS_MODE') === 'live' ? 'live' : 'shadow',
       company_name: company, contact_name: contact, contact_email: contactEmail, crm_url: crm,
-      barcode_type: body.barcode_type, token_hash: await hash(customerToken) };
+      barcode_type: body.barcode_type, app_origin: appOrigin, token_hash: await hash(customerToken) };
     const inserted = await db.rpc('create_order_request', { p_request: values, p_provider: integrationProvider(env), p_quote: { name: quoteName, data_base64: body.quote_data, sha256: hex(await crypto.subtle.digest('SHA-256', bytes)) } });
     if (inserted.error && inserted.error.code !== '23505') checked(inserted);
     r = withReceipt(checked(await db.from('order_requests').select('*,' + receiptJoin).eq('id', body.id).single()));
@@ -188,11 +216,13 @@ async function handle(req: Request) {
 }
 Deno.serve(async req => {
   const origin = req.headers.get('origin') || '';
-  const allowed = env('ORDER_APP_URL').replace(/\/$/, '');
+  const canonical = env('ORDER_APP_URL').replace(/\/$/, '');
+  const allowedOrigins = new Set([canonical, ...env('ORDER_ALLOWED_ORIGINS').split(',').map(value => value.trim()).filter(Boolean)]);
+  const allowed = origin && allowedOrigins.has(origin) ? origin : canonical;
   const cors = { 'Access-Control-Allow-Origin': allowed, 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Vary': 'Origin', 'Cache-Control': 'no-store' };
-  if (origin && origin !== allowed) return new Response('Origin not allowed', { status: 403 });
+  if (origin && !allowedOrigins.has(origin)) return new Response('Origin not allowed', { status: 403 });
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: cors });
-  try { return Response.json(await handle(req), { headers: cors }); }
+  try { return Response.json(await handle(req, allowed), { headers: cors }); }
   catch (err) { return Response.json({ error: err instanceof Error ? err.message : 'Request failed. Please retry.' }, { status: 400, headers: cors }); }
 });

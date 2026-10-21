@@ -201,11 +201,9 @@ arbitrary one — a customer whose text will not fit needs a logo instead.
 
 Sign-in is **Supabase Auth**, in the same project that stores the orders, so
 there is no second service to administer and nothing to configure per
-deployment. Two ways in:
-
-- **Continue with Google**, hinted at the Beacon domain
-- **An emailed sign-in link** (magic link), which needs no OAuth provider
-  configured at all
+deployment. Sign in with **an emailed sign-in link** (magic link). Google
+sign-in is currently removed from the interface. Production magic links need
+reliable email delivery configured in Supabase.
 
 Access is limited to **`beaconsoftware.com`** addresses, and the domain is
 checked in two places — only one of which is the security boundary:
@@ -235,9 +233,8 @@ the one that actually grants access.
 
 1. **Apply migration `0007_order_status_workflow.sql`.** That is the only
    required step; everything else below is already in place or optional.
-2. **Optional — Google sign-in.** Supabase → Authentication → Sign In /
-   Providers → Google, with a Google OAuth client. If you skip it, the emailed
-   sign-in link still works and needs no provider setup.
+2. **Configure email delivery.** Use custom SMTP for production magic links.
+   Google sign-in is not currently offered.
 3. **Optional — turn off unused providers.** Microsoft/Azure was for the
    `@toolhound.com` path that no longer has access. Leaving it enabled is not
    an exposure, since the policy checks the domain, but there is no reason for
@@ -454,8 +451,16 @@ The local migration and function are not automatically deployed by Vercel.
    whenever those change. Its own authentication handles staff JWTs and customer
    bearer links, so platform `verify_jwt` is false (see `supabase/config.toml`).
 2. Configure server-side Edge Function secrets:
-   - `ORDER_APP_URL`: exact website origin, without trailing slash. Use the
-     local origin only with a separate development function/project.
+   - `ORDER_APP_URL`: canonical production website origin, without trailing slash.
+     Fallback for customer links created without an Origin header and legacy requests.
+     Linear integration links also use this URL.
+   - `ORDER_ALLOWED_ORIGINS`: comma-separated additional exact browser origins,
+     e.g. `http://127.0.0.1:4173,http://127.0.0.1:4175,http://localhost:4175`.
+     The canonical origin is always allowed. No wildcard origins. New customer links
+     use the allowed browser Origin, saved as `order_requests.app_origin`. Recovery
+     and regeneration preserve that destination even from a different admin host.
+     Localhost customer links only work on the same computer.
+     Local requests use the same real database and integrations; use test data.
    - `ORDER_LINK_SECRET`: a randomly generated secret of at least 32 characters.
      Keep it stable and backed up; changing it prevents recovering old URLs.
    - `ORDER_REQUESTS_MODE=shadow` initially (also the default).

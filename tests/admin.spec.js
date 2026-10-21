@@ -257,18 +257,9 @@ test('shows the sign-in gate when nobody is signed in', async ({ page }) => {
   await openDashboard(page, { email: null });
 
   await expect(page.getByRole('heading', { name: 'ToolHound Label Orders' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Email me a sign-in link' })).toBeVisible();
   await expect(page.getByText('Northgate Mining')).toHaveCount(0);
-});
-
-test('Google sign-in hints the account picker at the Beacon domain', async ({ page }) => {
-  await openDashboard(page, { email: null });
-  await page.getByRole('button', { name: 'Continue with Google' }).click();
-
-  const calls = await page.evaluate(() => window.__AUTH_CALLS__.oauth);
-  expect(calls).toHaveLength(1);
-  expect(calls[0].provider).toBe('google');
-  expect(calls[0].options.queryParams.hd).toBe('beaconsoftware.com');
 });
 
 test('requests a magic link for a typed address', async ({ page }) => {
@@ -316,8 +307,8 @@ test('admits a Beacon address', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Label orders' })).toBeVisible();
 });
 
-test('admits a ToolHound address', async ({ page }) => {
-  await openDashboard(page, { email: 'sales@toolhound.com' });
+test('admits Graham’s ToolHound address', async ({ page }) => {
+  await openDashboard(page, { email: 'graham.cooper@toolhound.com' });
   await expect(page.getByRole('heading', { name: 'Label orders', exact: true })).toBeVisible();
 });
 
@@ -1106,4 +1097,10 @@ test('orders show initial loading and preserve rows while refreshing',async({pag
  await page.evaluate(()=>window.__finishOrders());
  await expect(page.locator('.table-loading')).toHaveCount(0);
  await expect(page.locator('#tableScroll')).toHaveAttribute('aria-busy','false');
+});
+
+test('rejects ToolHound accounts other than Graham', async ({ page }) => {
+  await openDashboard(page, { email: 'other@toolhound.com' });
+  await expect(page.getByRole('heading', { name: 'Label orders', exact: true })).not.toBeVisible();
+  await expect(page.getByText('This dashboard is restricted to', { exact: false })).toBeVisible();
 });

@@ -16,10 +16,10 @@ const row = {
 before(async()=>{
  db = new PGlite();
  await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
- create schema auth; create table auth.users (id uuid primary key,email text,raw_app_meta_data jsonb);`);
+ create schema auth; create table auth.users (id uuid primary key,email text,raw_app_meta_data jsonb,email_confirmed_at timestamptz,banned_until timestamptz,deleted_at timestamptz,is_anonymous boolean default false);`);
  for(const file of fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql')).sort()) {
    if(file.endsWith('_provider_independent_orders.sql')) {
-     await db.exec("insert into auth.users values ('10000000-0000-4000-8000-000000000099','migration@toolhound.com','{}'); insert into public.order_requests(id,created_by,mode,company_name,contact_name,contact_email,barcode_type,quote_name,quote_sha256,quote_data,token_hash,ticket_state,linear_identifier,linear_url) values ('20000000-0000-4000-8000-000000000099','10000000-0000-4000-8000-000000000099','live','Legacy','Dana','dana@acme.example','linear','old.pdf','oldhash','JVBERi0xLjQ=','legacy-token','ready','SALES-418','https://linear.app/example');");
+     await db.exec("insert into auth.users(id,email,raw_app_meta_data) values ('10000000-0000-4000-8000-000000000099','migration@toolhound.com','{}'); insert into public.order_requests(id,created_by,mode,company_name,contact_name,contact_email,barcode_type,quote_name,quote_sha256,quote_data,token_hash,ticket_state,linear_identifier,linear_url) values ('20000000-0000-4000-8000-000000000099','10000000-0000-4000-8000-000000000099','live','Legacy','Dana','dana@acme.example','linear','old.pdf','oldhash','JVBERi0xLjQ=','legacy-token','ready','SALES-418','https://linear.app/example');");
    }
    if(file.endsWith('_consolidate_order_requests.sql')) {
     await db.exec(`select public.create_order_request('{"id":"20000000-0000-4000-8000-000000000098","created_by":"10000000-0000-4000-8000-000000000099","mode":"live","company_name":"Pending","contact_name":"Dana","contact_email":"dana@acme.example","barcode_type":"linear","token_hash":"pending-token"}', '{"name":"pending.pdf","sha256":"pendinghash","data_base64":"JVBERi0xLjQ="}');
@@ -29,7 +29,7 @@ before(async()=>{
    catch(e) { throw new Error(file + ': ' + e.message); }
  }
  await db.exec('grant all on public.label_orders to service_role; grant usage on schema public to service_role,anon,authenticated;');
- await db.query('insert into auth.users values ($1,$2,$3)',[staff,'graham@toolhound.com','{}']);
+ await db.query('insert into auth.users(id,email,raw_app_meta_data) values ($1,$2,$3)',[staff,'graham@toolhound.com','{}']);
 });
 after(async()=>{await db?.close();});
 async function seed(id=request, mode='live', ticket='ready', provider='linear') {
@@ -174,4 +174,41 @@ test('migration preserves pending retry state and wrong providers cannot claim i
  await db.query('select public.retry_order_integrations($1)',[id]);
  assert.equal((await db.query("select * from public.claim_order_sync($1,'other')",[id])).rows.length,0);
  assert.equal((await db.query("select * from public.claim_order_sync($1,'linear')",[id])).rows.length,1);
+});
+
+test('staff RLS checks current verified identity, ignores forged email and metadata',async()=>{
+ const id='10000000-0000-4000-8000-000000000088';
+ await db.query("insert into auth.users(id,email,email_confirmed_at) values ($1,'audit@beaconsoftware.com',now())",[id]);
+ async function allowed(email,extra={}) {
+  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({role:'authenticated',sub:id,email,...extra})]);
+  await db.exec('set role authenticated');
+  try { return (await db.query('select public.is_label_order_staff() ok')).rows[0].ok; }
+  finally { await db.exec('reset role'); }
+ }
+ assert.equal(await allowed('audit@beaconsoftware.com'),true);
+ await db.query("update auth.users set email='other@toolhound.com' where id=$1",[id]);
+ assert.equal(await allowed('audit@beaconsoftware.com'),false);
+ assert.equal(await allowed('other@toolhound.com',{user_metadata:{email:'audit@beaconsoftware.com'}}),false);
+ await db.query("update auth.users set email='graham.cooper@toolhound.com' where id=$1",[id]);
+ assert.equal(await allowed('graham.cooper@toolhound.com'),true);
+ await db.query('update auth.users set email_confirmed_at=null where id=$1',[id]);
+ assert.equal(await allowed('graham.cooper@toolhound.com'),false);
+ await db.query("update auth.users set email_confirmed_at=now(),banned_until=now()+interval '1 day' where id=$1",[id]);
+ assert.equal(await allowed('graham.cooper@toolhound.com'),false);
+ await db.query('update auth.users set banned_until=null,deleted_at=now() where id=$1',[id]);
+ assert.equal(await allowed('graham.cooper@toolhound.com'),false);
+ await db.query('update auth.users set deleted_at=null,is_anonymous=true where id=$1',[id]);
+ assert.equal(await allowed('graham.cooper@toolhound.com'),false);
+ await db.exec('set role anon');
+ try { await assert.rejects(()=>db.query('select public.is_label_order_staff()'),/permission denied/); }
+ finally { await db.exec('reset role'); }
+});
+
+test('request creation persists origin atomically and retries cannot change it',async()=>{
+ const id='20000000-0000-4000-8000-000000000087';
+ const request={id,created_by:staff,mode:'shadow',company_name:'Test',contact_name:'Test',contact_email:'test@example.com',barcode_type:'linear',token_hash:'origin-test',app_origin:'http://localhost:4175'};
+ const quote={name:'test.pdf',sha256:'hash',data_base64:'JVBERi0xLjQ='};
+ await db.query('select public.create_order_request($1,$2,null)',[JSON.stringify(request),JSON.stringify(quote)]);
+ await db.query('select public.create_order_request($1,$2,null)',[JSON.stringify({...request,app_origin:'https://production.example'}),JSON.stringify(quote)]);
+ assert.equal((await db.query('select app_origin from public.order_requests where id=$1',[id])).rows[0].app_origin,'http://localhost:4175');
 });
