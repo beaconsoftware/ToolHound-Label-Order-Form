@@ -17,7 +17,8 @@
  * customer's shipping address is the only address on the sheet), symbology,
  * ship-via and required-by. The reference is ToolHound's own quote number.
  */
-(function () {
+(function (root) {
+  function createDocument(document, config) {
   'use strict';
 
   var LOGO_LABELS = {
@@ -156,7 +157,7 @@
     // made, not how the paperwork moves.
     if (opts && opts.audience === 'vendor') return instr;
 
-    var by = (window.TOOLHOUND_CONFIG || {}).orderedBy || {};
+    var by = (config || {}).orderedBy || {};
     var standing = 'Send a proof for customer approval before production, and quote '
       + 'our reference ' + (ref || '(see above)') + ' on the proof, order '
       + 'acknowledgement, packing slip and invoice.'
@@ -266,7 +267,9 @@
 
   function fmtDate(v) {
     if (!v) return '';
-    var dt = v instanceof Date ? v : new Date(v);
+    // A calendar date has no timezone; do not shift it to the previous day.
+    var dt = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+      ? new Date(v + 'T12:00:00') : (v instanceof Date ? v : new Date(v));
     if (isNaN(dt.getTime())) return String(v);
     try {
       return dt.toLocaleDateString('en-CA',
@@ -304,7 +307,7 @@
     // reproduced whole. Dropping the authorisation from that one would throw
     // away the only evidence that a nonreturnable order was agreed to.
     var vendor = opts.audience === 'vendor';
-    var cfg = (window.TOOLHOUND_CONFIG || {});
+    var cfg = (config || {});
     var by = cfg.orderedBy || {};
     var sup = cfg.supplier || {};
     // The material is whatever type the order carries. Rows written before
@@ -612,7 +615,7 @@
    */
   function emailHtml(o, opts) {
     opts = opts || {};
-    var cfg = (window.TOOLHOUND_CONFIG || {});
+    var cfg = (config || {});
     var by = cfg.orderedBy || {};
     var sup = cfg.supplier || {};
     var ref = txt(o.quoteNumber).trim() || txt(o.orderRef).trim();
@@ -732,7 +735,7 @@
    */
   function emailText(o, opts) {
     opts = opts || {};
-    var cfg = (window.TOOLHOUND_CONFIG || {});
+    var cfg = (config || {});
     var by = cfg.orderedBy || {};
     var sup = cfg.supplier || {};
     var ref = txt(o.quoteNumber).trim() || txt(o.orderRef).trim();
@@ -797,7 +800,7 @@
     return L.join('\n');
   }
 
-  window.TOOLHOUND_ORDER_DOC = {
+  return {
     render: render,
     fromForm: fromForm,
     fromRow: fromRow,
@@ -808,4 +811,7 @@
     splitSequence: splitSequence,
     dieSize: dieSize
   };
-})();
+  }
+  root.TOOLHOUND_CREATE_ORDER_DOC = createDocument;
+  root.TOOLHOUND_ORDER_DOC = createDocument(root.document, root.TOOLHOUND_CONFIG);
+})(typeof window !== 'undefined' ? window : globalThis);

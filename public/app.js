@@ -2,17 +2,57 @@
  * ToolHound custom label order form.
  *
  * A four step wizard (customer details -> label spec -> review -> authorization)
- * that writes one row to `public.label_orders` in Supabase. Because a custom
+ * that submits against a token-bound request through an Edge Function. A custom
  * label run is nonreturnable once approved, the final step captures an explicit
  * authorization and the confirmation screen doubles as a printable record of
  * exactly what was approved.
  *
- * No build step: this file is loaded directly by index.html.
+ * No build step: both label form pages load this file directly.
  */
 (function () {
   'use strict';
 
   var CONFIG = window.TOOLHOUND_CONFIG || {};
+  var linkParams = new URLSearchParams(window.location.hash.slice(1));
+  if (!linkParams.get('request') || !linkParams.get('token')) {
+    window.location.replace('request-link.html');
+    return;
+  }
+  var requestState = 'loading';
+  var requestInfo = null;
+  var requestError = '';
+
+  async function requestApi(action, row) {
+    var db = getDb();
+    if (!db || !db.functions) throw new Error('The order system is unavailable. Please try again later.');
+    var result = await db.functions.invoke('order-requests', { body: {
+      action: action, id: linkParams.get('request'), token: linkParams.get('token'), row: row
+    } });
+    if (result.error) {
+      var detail;
+      try { detail = await result.error.context.json(); } catch (_) { /* unavailable response */ }
+      throw new Error((detail && detail.error) || 'Could not load or save this order. Please retry or contact ToolHound.');
+    }
+    if (!result.data || result.data.error) throw new Error((result.data && result.data.error) || 'Invalid order response.');
+    return result.data;
+  }
+  async function loadRequest() {
+    render();
+    try {
+      requestInfo = await requestApi('load');
+      if (requestInfo.barcode_type !== VARIANT) throw new Error('This link is for a different label form. Please use the complete link sent by ToolHound.');
+      if (requestInfo.submitted_at) requestState = 'submitted';
+      else {
+        // Explicit projection: never copy internal fields into customer state.
+        ['companyName', 'contactName', 'contactEmail'].forEach(function (key) {
+          state.data[key] = String(requestInfo.prefill[key] || '');
+        });
+        requestState = 'ready';
+      }
+    } catch (err) { requestState = 'error'; requestError = err.message; }
+    render();
+  }
+
 
   /**
    * Which of the two forms this page is. Set by the page itself, not chosen by
@@ -71,6 +111,25 @@
    * poly pro is a way to reach production with a die Metalcraft does not have.
    */
   var LABEL_TYPES = (CONFIG.labelTypes || []);
+
+  // Images stay in an img element: uploaded SVG is never inserted as active markup.
+  function artworkPreview(data, name) {
+    var figure = el('figure', { class: 'artwork-preview' });
+    var caption = el('figcaption', { text: name });
+    if (/^data:image\/(png|jpeg|jpg|svg\+xml);base64,/i.test(data || '')) {
+      var image = el('img', { src: data, alt: 'Preview of uploaded artwork: ' + name });
+      image.onerror = function () {
+        image.remove();
+        figure.insertBefore(el('p', { class: 'hint', text: 'This image could not be previewed. You can replace it or download the original below.' }), caption);
+      };
+      figure.appendChild(image);
+    } else {
+      figure.appendChild(el('p', { class: 'hint', text: 'PDF artwork selected. Download the file to review it.' }));
+    }
+    figure.appendChild(caption);
+    figure.appendChild(el('a', { href: data, download: name, text: 'Download original artwork' }));
+    return figure;
+  }
 
   function labelTypeByValue(v) {
     return LABEL_TYPES.filter(function (t) { return t.value === v; })[0] || null;
@@ -458,7 +517,7 @@
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
         }
       }, [
-        d.logoFileName ? ('Selected: ' + d.logoFileName)
+        d.logoFileName ? 'Replace artwork'
           : ('Click to upload logo (PNG, JPG, SVG, or PDF, up to '
              + (CONFIG.maxLogoFileMb || 4) + 'MB)')
       ]);
@@ -469,6 +528,7 @@
         onchange: function (e) { handleLogoFile(e.target.files[0]); }
       });
       picker.appendChild(input);
+      if (d.logoFileData) fw.appendChild(artworkPreview(d.logoFileData, d.logoFileName));
       fw.appendChild(picker);
       fw.appendChild(fileErr);
       if (d.logoFileName) {
@@ -915,7 +975,7 @@
     b2.appendChild(el('h3', {}, 'Label Specifications'));
     b2.appendChild(reviewRow('Code Type', VARIANT_DEF ? VARIANT_DEF.label : ''));
     b2.appendChild(reviewRow('Logo / Text', LOGO_CHOICE_LABELS[d.logoChoice]));
-    if (d.logoChoice === 'custom_logo') b2.appendChild(reviewRow('Logo File', d.logoFileName));
+    if (d.logoChoice === 'custom_logo') b2.appendChild(artworkPreview(d.logoFileData, d.logoFileName));
     if (d.logoChoice === 'custom_text') {
       b2.appendChild(reviewRow('Custom Text', filledTextLines(d).join(' / ')));
     }
@@ -1269,6 +1329,11 @@
       if (!ok) { focusFirstError(card); return; }
       submitOrder(bar._primary);
     });
+    bar._primary.disabled = true;
+    cb.addEventListener('change', function () {
+      bar._primary.disabled = !cb.checked || state.submitting;
+      if (cb.checked) agreeErr.style.display = 'none';
+    });
     card.appendChild(bar);
   }
 
@@ -1339,19 +1404,9 @@
    * Resolve the database client. Tests inject a stub via `window.__TOOLHOUND_DB__`
    * so the wizard can be exercised without network access.
    *
-   * The session options are load-bearing, not tidiness. This form and the staff
-   * dashboard are the same origin and the same Supabase project, so by default
-   * they share one stored session under one localStorage key. A staff member who
-   * had signed in to /admin then submitted this form sent their user JWT, so
-   * PostgREST ran the insert as `authenticated` -- which holds SELECT and no
-   * INSERT by design (0002 revoked it) -- and every submission failed with
-   * `permission denied for table label_orders`. Customers never saw it, because
-   * customers never sign in.
-   *
-   * So the public form is deliberately session-blind: no session is read, kept
-   * or refreshed, and its storage key cannot collide with the dashboard's. It
-   * submits as `anon`, which is the only role the insert policy grants, whoever
-   * happens to be logged in in that browser.
+   * Customer links are bearer credentials, separate from staff sign-in. Do not
+   * read or modify the dashboard's session while viewing a customer's form.
+   * The Edge Function verifies the link token and performs scoped writes.
    */
   function getDb() {
     if (window.__TOOLHOUND_DB__) return window.__TOOLHOUND_DB__;
@@ -1383,42 +1438,19 @@
       return;
     }
 
-    var attempt = 0;
-
-    function tryInsert() {
-      attempt++;
-      var orderRef = makeOrderRef();
-      var row = buildRow(state.data, orderRef);
-
-      Promise.resolve(db.from('label_orders').insert(row)).then(function (res) {
-        var error = res && res.error;
-        if (!error) {
-          state.submitting = false;
-          state.orderRef = orderRef;
-          state.submittedAt = new Date();
-          go(4);
-          return;
-        }
-        // A duplicate order reference is the one error worth retrying: the
-        // reference is generated client side, so a fresh one may well succeed.
-        if (error.code === '23505' && attempt < 3) { tryInsert(); return; }
-
-        console.error('Supabase insert failed', error);
-        if (error.code === '23514') {
-          failSubmit('Some of the order details were rejected as invalid. Please '
-            + 'go back and check the quantity, sequence number, and label text, '
-            + 'then try again.');
-        } else {
-          failSubmit('Something went wrong submitting your order. Please try again, '
-            + 'or contact ToolHound at '
-            + (CONFIG.supportPhone || 'the number above') + '.');
-        }
-      }).catch(function (e) {
-        console.error('Network error submitting order', e);
-        failSubmit('Your order could not be sent. Please check your connection and '
-          + 'try again.');
-      });
-    }
+    requestApi('submit', buildRow(state.data, makeOrderRef())).then(function (receipt) {
+      state.submitting = false;
+      state.orderRef = receipt.order_ref;
+      state.submittedAt = new Date(receipt.submitted_at);
+      requestInfo = Object.assign({}, requestInfo, receipt);
+      if (receipt.mode === 'shadow' || receipt.already_submitted) {
+        requestState = 'submitted';
+        render();
+      } else {
+        // Keep the printable signed record after a fresh live submission.
+        go(4);
+      }
+    }).catch(function (err) { failSubmit(err.message); });
 
     function failSubmit(message) {
       state.submitting = false;
@@ -1428,7 +1460,6 @@
       if (alertEl && alertEl.scrollIntoView) alertEl.scrollIntoView({ block: 'center' });
     }
 
-    tryInsert();
   }
 
   // ---------------------------------------------------------------------------
@@ -1582,6 +1613,22 @@
     var card = document.getElementById('card');
     if (!card) return;
     card.innerHTML = '';
+    if (requestInfo && requestInfo.mode === 'shadow') card.appendChild(el('p', { class: 'form-error' },
+      'Shadow test only. This form does not place a production order.'));
+    if (requestState === 'loading') { card.appendChild(el('p', { role: 'status' }, 'Loading your order…')); return; }
+    if (requestState === 'error') {
+      card.appendChild(el('p', { class: 'form-error', role: 'alert' }, requestError));
+      card.appendChild(el('button', { class: 'ghost', onclick: function () { requestState = 'loading'; loadRequest(); } }, 'Try again'));
+      return;
+    }
+    if (requestState === 'submitted') {
+      card.appendChild(el('h2', {}, requestInfo.mode === 'shadow' ? 'Test response recorded' : 'Order already submitted'));
+      card.appendChild(el('p', {}, 'We received this response on ' + new Date(requestInfo.submitted_at).toLocaleString() + '.'));
+      card.appendChild(el('p', {}, 'Reference: ' + requestInfo.order_ref));
+      card.appendChild(el('p', {}, 'This link cannot submit another order. Contact ToolHound if you need to make a change.'));
+      card.appendChild(contactCard());
+      return;
+    }
 
     // A page that did not declare which of the two forms it is cannot produce
     // an order anyone can manufacture, so it says so rather than collecting
@@ -1620,8 +1667,8 @@
   };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', render);
+    document.addEventListener('DOMContentLoaded', loadRequest);
   } else {
-    render();
+    loadRequest();
   }
 })();

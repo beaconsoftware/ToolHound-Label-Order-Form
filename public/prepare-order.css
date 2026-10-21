@@ -1,0 +1,102 @@
+.intake-wrap { max-width: 1080px; }
+.intake-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.intake-grid .wide { grid-column: 1 / -1; }
+.intake-wrap .card { margin-bottom: 24px; }
+.intake-wrap label { display: block; font-weight: 600; margin-bottom: 8px; }
+.intake-wrap input, .intake-wrap select { width: 100%; box-sizing: border-box; }
+.intake-wrap h2 { margin-bottom: 16px; }
+.intake-wrap button { margin: 6px 8px 6px 0; }
+.intake-wrap .hint { margin: 12px 0; }
+.request-list { display: grid; gap: 16px; }
+.request-item { border: 1px solid #d8e1e9; border-radius: 10px; padding: 18px; }
+.request-item h3 { margin: 0 0 8px; }
+.request-item p { overflow-wrap: anywhere; margin: 8px 0; }
+.intake-message { padding: 16px; background: var(--color-info-subtle); border-radius: 8px; margin: 16px 0; overflow-wrap: anywhere; }
+.shadow-banner { padding: 14px; background: var(--color-warning-subtle); color: var(--color-warning-text); border-radius: 8px; margin-bottom: 16px; }
+@media (max-width: 650px) { .intake-grid { grid-template-columns: 1fr; } }
+
+/* Intake controls are independent of the wizard's .field wrappers. */
+.intake-page .topbar > span { color: var(--paper); font-size: 14px; font-weight: 600; }
+.intake-page .intake-wrap { margin-top: 24px; }
+.intake-wrap .card { border: 1px solid #d8c8c5; }
+.intake-wrap h2 { margin-top: 0; }
+.intake-wrap p { line-height: 1.5; }
+.intake-wrap input, .intake-wrap select {
+  min-height: 46px;
+  padding: 11px 12px;
+  border: 1.5px solid var(--color-border-control);
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+.intake-wrap input:focus, .intake-wrap select:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(207,56,44,.15);
+}
+.intake-wrap input[type=file] { padding: 9px; }
+.intake-wrap input[type=file]::file-selector-button {
+  padding: 7px 10px;
+  margin-right: 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+  font: inherit;
+}
+/* Navigation and preparation live inside the existing admin shell. */
+.admin-views { max-width: 1200px; margin: 0 auto; padding: 12px 0 0; display: flex; gap: 28px; border-bottom: 1px solid var(--line); }
+.admin-views .admin-nav-item { text-decoration: none; display: inline-block; background: transparent; color: var(--ink-soft); border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 16px 0 13px; margin: 0 0 -1px; font-size: 14px; font-weight: 600; box-shadow: none; }
+.admin-views .admin-nav-item:hover { background: transparent; color: var(--ink); }
+.admin-views .admin-nav-item[aria-current="page"] { color: var(--red); border-bottom-color: var(--red); }
+@media (max-width: 1240px) { .admin-views { margin-left: 20px; margin-right: 20px; } }
+.admin-views[hidden], #orderPreparation[hidden], #root[hidden] { display: none; }
+.intake-grid > div { min-width: 0; }
+
+/* Request history uses the same dense, tabular layout as the order dashboard. */
+.admin-wrap.intake-wrap { max-width: 1240px; }
+.request-history { margin-top: 32px; }
+.request-history-head, .request-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.request-history-head h2 { display: inline; font-size: 21px; margin: 0; }
+.request-count { margin-left: 12px; color: var(--ink-soft); font-size: 13px; }
+.request-toolbar { display: flex; gap: 12px; margin: 18px 0 14px; }
+.request-toolbar input { flex: 1; min-width: 0; }
+.request-toolbar select { width: 210px; }
+.request-history-status:empty, .request-action-status:empty { display: none; }
+.request-quote { display: block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: normal; overflow-wrap: anywhere; }
+.request-ticket { font-size: 12px; display: inline-block; margin-top: 5px; }
+.request-badge { display: inline-flex; white-space: nowrap; padding: 4px 8px; border-radius: 5px; font-size: 11px; font-weight: 600; background: var(--color-bg-muted); color: var(--color-text-muted); }
+.request-badge-awaiting { background: var(--color-info-subtle); color: var(--color-info-text); }
+.request-badge-expired, .request-badge-pending { background: var(--color-warning-subtle); color: var(--color-warning-text); }
+.request-badge-submitted { background: var(--color-success-subtle); color: var(--color-success-text); }
+.request-expired { color: var(--color-warning-text); }
+.intake-wrap .request-action { margin: 0; font-size: 12px; white-space: nowrap; }
+
+.request-actions { min-width: 140px; }
+.request-actions .request-action + .request-action { margin-top: 6px; }
+.request-action-status { font-size: 12px; max-width: 190px; color: var(--color-danger-text); }
+.request-table .request-empty { text-align: center; padding: 40px 20px; color: var(--ink-soft); }
+.request-link-dialog { border: 1px solid var(--line); border-radius: 14px; padding: 24px; width: min(600px, calc(100vw - 40px)); max-height: 85dvh; overflow: auto; overscroll-behavior: contain; color: var(--ink); box-shadow: 0 24px 80px #0003; }
+.request-link-dialog::backdrop { background: var(--color-overlay); }
+.request-dialog-head h2 { margin: 0; font-size: 20px; }
+.request-link-dialog .link-result { background: transparent; padding: 0; margin-bottom: 0; }
+.request-success { color: var(--color-success-text); font-size: 14px; }
+@media (max-width: 650px) {
+ .request-toolbar { flex-direction: column; }
+ .request-toolbar select { width: 100%; }
+ .request-count { display: block; margin: 6px 0 0; }
+}
+
+.customer-link-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 32px; }
+.intake-wrap .customer-link-actions button { margin: 0; }
+.request-sent-form { display: grid; gap: 16px;  }
+.request-sent-form > button { justify-self: start; }
+
+.request-scroll-hint { color: var(--ink-soft); font-size: 12px; margin: 0 0 12px; }
+@media (min-width: 1100px) { .request-scroll-hint { display: none; } }
+@media (max-width: 650px) {
+ .request-link-dialog { padding: 20px; width: calc(100% - 32px); }
+ .request-history-head { flex-wrap: wrap; }
+ .admin-views { gap: 20px; }
+}

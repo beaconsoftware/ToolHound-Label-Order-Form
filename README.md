@@ -409,3 +409,161 @@ Client-side checks are the user experience. The constraints are the guarantee.
   therefore hands artwork over as a download and never renders it inline, and
   `notify-sales` never attaches it. Any *other* internal tool that displays
   these logos must do the same, or rasterise them first.
+
+## Preparing customer-specific orders (FWD-3)
+
+`/admin` includes a **Prepare customer link** section alongside the label-order dashboard.
+`/prepare-order` redirects to that section. Staff sign in through
+Supabase email magic links using a confirmed `@beaconsoftware.com` or
+`@toolhound.com` account. The Edge Function validates the user with Auth on every
+internal operation; the browser domain check is only for presentation. The admin UI admits both work domains; existing database RLS still controls
+which submitted manufacturing orders each staff member can read.
+
+The intake requires a completed PDF quote (up to 10 MB), company, contact, email,
+and linear/QR label form selection. A CRM HTTPS link is optional and is
+internal only. The request UUID, customer and author live in private `order_requests`. The quote PDF bytes, SHA-256, version and external IDs also live directly on `order_requests`. The quote is immutable
+for that request. For a revised quote, revoke the old unsubmitted customer link
+and create a new request; do not replace documents behind a signed authorization.
+Unsupported order types are not offered.
+
+A generated URL uses a bearer token in its fragment, keeping it out of ordinary
+server logs and referrer headers. The token is derived with a server-only HMAC
+key; the database stores its hash. Links expire after 90 days. The customer API
+returns only company/contact/email, code type, test mode and submission status.
+It never returns the quote PDF, CRM URL, ticket mapping or internal notes.
+
+Submission locks the request and inserts a signed `label_orders` row with a unique
+`order_request_id` foreign key. Live submission status and receipt come from that
+order, without copying the form into the request. Integration jobs record pending external synchronization independently. Linked orders can be cancelled but cannot be deleted. Existing order
+constraints still apply. Duplicate and concurrent submissions return the first
+receipt. The customer can reopen the link to see that it was submitted; editing
+a signed response requires contacting staff. Both customer forms require the complete request/token link. Without it they
+redirect to `/request-link.html`, which asks the customer to contact ToolHound.
+The homepage displays the same guidance. The legacy database anon INSERT grant
+is not revoked by this migration; this redirect is a website flow requirement,
+not a claim that the legacy API has been removed.
+
+### Deployment and credentials
+
+The local migration and function are not automatically deployed by Vercel.
+
+1. Apply the migrations through `20261020130510_compact_order_references.sql` to the intended
+   Supabase project. Run `npm ci && npm run build:order-requests`, then
+   `supabase functions deploy order-requests`. The configured `bundled.js` entrypoint
+   includes the shared browser document renderer, configuration and logo; rebuild
+   whenever those change. Its own authentication handles staff JWTs and customer
+   bearer links, so platform `verify_jwt` is false (see `supabase/config.toml`).
+2. Configure server-side Edge Function secrets:
+   - `ORDER_APP_URL`: exact website origin, without trailing slash. Use the
+     local origin only with a separate development function/project.
+   - `ORDER_LINK_SECRET`: a randomly generated secret of at least 32 characters.
+     Keep it stable and backed up; changing it prevents recovering old URLs.
+   - `ORDER_REQUESTS_MODE=shadow` initially (also the default).
+   - For live writes: `LINEAR_API_KEY`, `LINEAR_TEAM_ID`,
+     `LINEAR_INTAKE_STATE_ID`, and optionally `LINEAR_PROJECT_ID`.
+   - Creation uses ToolHound’s **Label Order** template (`b8be76d3-d22c-4e18-9522-1f7f4824b733`), including its assignee, priority, label and eight sub-issues. Override with `LINEAR_LABEL_ORDER_TEMPLATE_ID` if the template changes. The API key needs access to Sales and Accounting for the template’s cross-team sub-issues. Existing issues are not retroactively changed.
+3. Create the Linear API key **in ToolHound's Linear organization** with access
+   to the chosen team/project and permission to read/create issues, upload
+   files and create comments. An integration-owned account is preferable to a
+   key whose access will disappear when an employee leaves. The chat's Beacon
+   Linear connection is not the app's credential. Never put this key or the
+   Supabase service-role key in `public/` or commit secret values.
+4. Add the website's `/admin.html` redirect URL to Supabase Auth's allowed
+   redirects. Email sign-in must be enabled and email confirmation required.
+   Configure reliable Auth email delivery for staff sign-in.
+5. Exercise the shadow flow with test data, then explicitly enable live mode
+   with `ORDER_REQUESTS_MODE=live` after validating the target Linear project
+   and early state. Shadow requests remain shadow even if the setting changes.
+
+Shadow mode stores test requests and a minimal receipt (reference and timestamp), but does not create Linear tickets,
+insert manufacturing orders or trigger the existing order notification webhook.
+It exercises the UI, tokens and request linkage; it does not validate the entire
+live Linear delivery path or all manufacturing constraints. Run live integration
+validation in an isolated test project before production enablement.
+
+### Provider-independent system of record
+
+`order_requests.id` is the permanent identity, including before customer submission.
+`label_orders.order_request_id` connects the immutable signed response. Existing IDs,
+tokens, expiries, quotes and ticket mappings are preserved by the migration.
+
+- `order_requests`: permanent ID, customer details, quote name/bytes/hash/version, bearer-link lifecycle and one optional external mapping (`external_provider`, `external_id`, `external_identifier`, `external_url`, `external_metadata`). The quote viewer reads the private quote directly through the authenticated endpoint; list and customer responses never include PDF bytes.
+- `label_orders`: the customer's signed specifications and authorization, linked through `order_request_id`.
+
+`order_requests.external_sync` holds only the two bounded operations, `request.created` and `order.submitted`. Each records status, provider, attempts, next retry time, error and an expiring lease/claim token. Creation saves the quote and initial sync state in one insert; submission saves the signed order and pending submission sync in one transaction. There are no document, integration-job, external-record or provider-configuration tables.
+
+`ORDER_INTEGRATION_PROVIDER` is a server-only Edge Function setting: `linear` (default) enables the current adapter, and `none` disables new mappings and pauses all external sync. Existing mappings and pending states are retained when paused. Shadow requests never sync regardless of this setting.
+
+The endpoint returns the customer link as soon as the local transaction commits.
+`EdgeRuntime.waitUntil` attempts queued work in the background. Dashboard reads
+retry up to three pending requests with SQL-enforced backoff (1–60 minutes), and
+**Retry sync** permits an immediate staff-triggered retry. A stopped worker's lease
+expires after five minutes. There is no unattended cron scheduler yet: when the
+app is idle, pending sync state remains saved until the next dashboard visit or retry.
+
+`integrations.ts` dispatches events; `linear-adapter.ts` owns all Linear API, template,
+upload and comment behavior. Lost creation responses reconcile using the stored
+external UUID. Submission waits for confirmed external creation. Claim-token checks on completion
+prevents an old worker from completing a reclaimed job. Customer submission never
+waits for external sync.
+
+To replace Linear, implement the same two adapter methods (`request.created` and
+`order.submitted`), register the adapter and add it to the supported `ORDER_INTEGRATION_PROVIDER` settings. The adapter must reconcile operations idempotently using the
+stable mapping/event IDs. Set `ORDER_INTEGRATION_PROVIDER=none` to pause writes. Existing requests do
+not automatically switch providers: migrate their inline mappings deliberately when switching. Sync operations retain their provider and only run when it matches both the request and server setting.
+No customer URL or core order schema change is needed.
+
+**Mark form sent** records the recipient, staff-stated send time, recording time
+and staff user. It does not send email, verify delivery, or approve purchasing.
+Graham sends the quote and link through his own email client.
+
+### Validation and live-state notes
+
+- `npm test`: existing browser tests plus intake and customer-link tests; calls
+  are stubbed so they cannot create real orders, tickets or emails.
+- `npm run test:backend`: Node 22.13+ tests the Edge Function with isolated
+  service stubs and executes all migrations in a temporary PGlite PostgreSQL
+  database, including permission and transactional submission checks.
+- Type-check the function with Deno (`deno check --node-modules-dir=auto
+  supabase/functions/order-requests/index.ts`).
+
+Live inspection on 2026-10-19 found an additional migration,
+`20260911193818_allow_graham_cooper_label_order_staff`, absent from this checkout.
+It changes `is_label_order_staff()` to include `graham.cooper@toolhound.com`.
+Do not overwrite that function with the older repository definition during
+rollout. The new intake uses its own verified-email domain check. At inspection,
+email auth was enabled, Google/Microsoft auth disabled, and the new intake
+migration was subsequently applied and the Edge Function deployed on 2026-10-19.
+The six existing orders were preserved; no historical invitations were fabricated.
+App URL, signing secret, live Linear credentials and sign-in configuration still
+need to be configured and verified before live use.
+
+### Request history and regeneration
+
+The preparation page lists the latest 250 requests, with company/contact search,
+last recorded send date, expiration, and derived submission status. Active links
+can be recovered and resent. An expired, unsubmitted request can be regenerated:
+the same row gets a new token version/hash and 90-day expiry. Quote and Linear
+mapping are unchanged. Original send metadata is retained and the replacement is
+not considered sent until marked sent again. The database locks regeneration and
+submission on the same request; expected token versions make retries idempotent.
+Revoked or submitted requests cannot be regenerated.
+
+The private request table intentionally has RLS with no browser policies. Security
+advisors report this as informational. Pre-existing advisor findings concern the
+public `enforce_staff_oauth_domain()` security-definer function
+(https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)
+and disabled leaked-password protection
+(https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+
+### Completed order PDFs
+
+On customer submission, the Linear adapter generates a vendor PDF and signed
+customer record from the saved `label_orders` row using the shared `order-doc.js`
+renderer. It uploads both to Linear and links them in the submission comment.
+Upload URLs are saved on `order_requests.external_metadata`; retries reuse them
+and reconcile the same comment ID. No document or job tables are added.
+
+New order references use the original `THL-<base36 timestamp>-<six random characters>`
+format, generated on the server. Repeated submissions return the stored reference;
+already-issued references remain unchanged.

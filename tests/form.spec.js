@@ -19,28 +19,30 @@ async function stubDb(page, { failWith = null, failFirstNTimes = 0 } = {}) {
       window.__INSERTED__ = [];
       let calls = 0;
       window.__TOOLHOUND_DB__ = {
-        from() {
-          return {
-            insert(row) {
-              calls++;
-              window.__INSERTED__.push(row);
-              if (failWith && calls <= (failFirstNTimes || Number.MAX_SAFE_INTEGER)) {
-                return Promise.resolve({ error: failWith });
-              }
-              return Promise.resolve({ error: null });
-            }
-          };
-        }
+        functions: { invoke: async (name, { body }) => {
+          if (body.action === 'load') return { data: { mode: 'live', barcode_type: location.pathname.includes('qr-code') ? 'qr' : 'linear', prefill: {} } };
+          calls++;
+          window.__INSERTED__.push(body.row);
+          window.__REQUEST_IDS__ = (window.__REQUEST_IDS__ || []).concat(body.id);
+          if (failWith && calls <= (failFirstNTimes || Number.MAX_SAFE_INTEGER)) {
+            return { data: { error: failWith.code === '23514' ? 'Some order details were rejected as invalid. Please check them and try again.' : 'Something went wrong submitting your order. Please try again.' } };
+          }
+          return { data: { mode: 'live', order_ref: body.row.order_ref, submitted_at: new Date().toISOString() } };
+        } }
       };
     },
     { failWith, failFirstNTimes }
   );
+  // Force a fresh document when replacing a stub: hash URLs can otherwise
+  // navigate within the existing document and skip the new init script.
+  await page.goto('about:blank');
 }
 
 // The two forms differ only by which code they are for, so the suite drives
 // the linear one by default and names the QR page where that is the point.
-const FORM_URL = '/linear-barcode.html';
-const QR_FORM_URL = '/qr-code.html';
+const LINK = '#request=12345678-1234-4234-9234-123456789012&token=' + 'a'.repeat(64);
+const FORM_URL = '/linear-barcode.html' + LINK;
+const QR_FORM_URL = '/qr-code.html' + LINK;
 
 async function fillStep1(page, overrides = {}) {
   const v = {
@@ -357,7 +359,8 @@ test.describe('step 2 validation', () => {
       await page.setInputFiles('input[type=file]', {
         name: 'acme-mark.png', mimeType: 'image/png', buffer: png
       });
-      await expect(page.getByText('Selected: acme-mark.png')).toBeVisible();
+      await expect(page.getByRole('img', {name:'Preview of uploaded artwork: acme-mark.png'})).toBeVisible();
+      await expect(page.getByText('Replace artwork', {exact:true})).toBeVisible();
 
       await page.getByRole('radio', { name: 'Yes', exact: true }).check();
       await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
@@ -365,6 +368,7 @@ test.describe('step 2 validation', () => {
       await fillQuantity(page, '100');
       await page.getByLabel('Starting Label Number *').fill('1');
       await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByRole('img', {name:'Preview of uploaded artwork: acme-mark.png'})).toBeVisible();
       await page.getByRole('button', { name: 'Continue to Authorization' }).click();
       await fillStep4(page);
       await page.getByRole('button', { name: 'Submit Order' }).click();
@@ -412,8 +416,12 @@ test.describe('step 4 authorization', () => {
 
   test('requires the agreement checkbox', async ({ page }) => {
     await page.getByLabel('Authorized Name *').fill('Dana Reyes');
-    await page.getByRole('button', { name: 'Submit Order' }).click();
-    await expect(page.getByText('Please check the box to continue')).toBeVisible();
+    const submit = page.getByRole('button', { name: 'Submit Order' });
+    await expect(submit).toBeDisabled();
+    await page.getByLabel('I have read and agree').check();
+    await expect(submit).toBeEnabled();
+    await page.getByLabel('I have read and agree').uncheck();
+    await expect(submit).toBeDisabled();
     const rows = await page.evaluate(() => window.__INSERTED__);
     expect(rows).toHaveLength(0);
   });
@@ -442,7 +450,9 @@ test.describe('submission failures', () => {
 
     await expect(page.getByText(/Something went wrong submitting your order/))
       .toBeVisible();
-    // Still on the authorization step, with the button usable again.
+    // Re-rendered authorization requires checking the agreement again.
+    await expect(page.getByRole('button', { name: 'Submit Order' })).toBeDisabled();
+    await page.getByLabel('I have read and agree').check();
     await expect(page.getByRole('button', { name: 'Submit Order' })).toBeEnabled();
     // The entered details survive the failure.
     await expect(page.getByLabel('Authorized Name *')).toHaveValue('Dana Reyes');
@@ -464,9 +474,8 @@ test.describe('submission failures', () => {
       await expect(page.getByText(/rejected as invalid/)).toBeVisible();
     });
 
-  // The order reference is generated in the browser, so a same-millisecond
-  // collision is possible; the form should quietly try a new reference.
-  test('retries with a fresh reference after a duplicate key error',
+  // An uncertain response must retry the same invitation, not create an order.
+  test('retries the same request after a failed submission',
     async ({ page }) => {
       await stubDb(page, {
         failWith: { code: '23505', message: 'duplicate key' },
@@ -482,10 +491,15 @@ test.describe('submission failures', () => {
       await fillStep4(page);
       await page.getByRole('button', { name: 'Submit Order' }).click();
 
+      await expect(page.getByText(/Something went wrong submitting your order/)).toBeVisible();
+      await fillStep4(page);
+      await page.getByRole('button', { name: 'Submit Order' }).click();
+
       await expect(page.getByRole('heading', { name: 'Order Submitted' })).toBeVisible();
       const rows = await page.evaluate(() => window.__INSERTED__);
       expect(rows).toHaveLength(2);
-      expect(rows[0].order_ref).not.toBe(rows[1].order_ref);
+      const ids = await page.evaluate(() => window.__REQUEST_IDS__);
+      expect(ids[0]).toBe(ids[1]);
     });
 });
 
@@ -1025,6 +1039,7 @@ test.describe('the public form submits as anon, never as a signed-in user', () =
       // The file-level beforeEach installs __TOOLHOUND_DB__, which app.js
       // prefers over createClient. Drop it so the real client path runs --
       // that path is what these tests are about.
+      const functions = window.__TOOLHOUND_DB__.functions;
       delete window.__TOOLHOUND_DB__;
       window.__INSERTED__ = [];
       window.__CREATE_CLIENT_CALLS__ = [];
@@ -1032,19 +1047,11 @@ test.describe('the public form submits as anon, never as a signed-in user', () =
       window.supabase = {
         createClient(url, key, options) {
           window.__CREATE_CLIENT_CALLS__.push({ url, key, options });
-          return {
-            from() {
-              return {
-                insert(row) {
-                  window.__INSERTED__.push(row);
-                  return Promise.resolve({ error: null });
-                }
-              };
-            }
-          };
+          return { functions };
         }
       };
     });
+    await page.goto('about:blank');
   }
 
   test('creates its client with no session read, kept or refreshed',
@@ -1407,17 +1414,16 @@ test.describe('two forms', () => {
     });
     // index.html is not a form and carries no variant, so it is the real case.
     await page.goto('/index.html');
-    await expect(page.getByRole('heading', { name: /Which label order form/ }))
+    await expect(page.getByRole('heading', { name: /Get your order link/ }))
       .toBeVisible();
     await expect(page.getByLabel('Company Name *')).toHaveCount(0);
   });
 
-  test('the landing page links to both forms and nothing else', async ({ page }) => {
+  test('the landing page asks customers to request a personal link', async ({ page }) => {
     await page.goto('/index.html');
-    await expect(page.getByRole('link', { name: /Linear barcode labels/ }))
-      .toHaveAttribute('href', 'linear-barcode');
-    await expect(page.getByRole('link', { name: /QR code labels/ }))
-      .toHaveAttribute('href', 'qr-code');
+    await expect(page.getByRole('heading', { name: 'Get your order link' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'sales@toolhound.com' })).toHaveAttribute('href', 'mailto:sales@toolhound.com');
+    await expect(page.getByLabel('Company Name *')).toHaveCount(0);
   });
 });
 

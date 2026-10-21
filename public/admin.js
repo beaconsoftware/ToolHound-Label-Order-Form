@@ -31,7 +31,7 @@
    * public.is_label_order_staff() in migration 0006, so changing the allowlist
    * means changing it there too — and that is the one that matters.
    */
-  var ALLOWED_DOMAINS = ['beaconsoftware.com'];
+  var ALLOWED_DOMAINS = ['beaconsoftware.com', 'toolhound.com'];
 
 
   var STATUSES = [
@@ -113,6 +113,8 @@
     recordAudience: 'vendor',
     confirmDeleteId: null,
     loadError: '',
+    ordersLoading: false,
+    ordersLoaded: false,
     rowErrors: {},      // order id -> message
     busyRows: {}        // order id -> true while a write is in flight
   };
@@ -326,7 +328,7 @@
     client.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + '/admin.html',
+        redirectTo: window.location.origin + window.location.pathname,
         // Points Google's own account picker at the right domain. A
         // convenience, not a restriction — it is trivially removable from the
         // URL, which is why the domain is checked again in the policy.
@@ -341,10 +343,14 @@
       if (statusEl) statusEl.textContent = 'Enter your email address first.';
       return;
     }
+    if (!domainAllowed(email)) {
+      if (statusEl) statusEl.textContent = 'Enter a Beacon or ToolHound email address.';
+      return;
+    }
     if (button) { button.disabled = true; button.textContent = 'Sending…'; }
     Promise.resolve(client.auth.signInWithOtp({
       email: email,
-      options: { emailRedirectTo: window.location.origin + '/admin.html' }
+      options: { emailRedirectTo: window.location.origin + window.location.pathname }
     })).then(function (res) {
       if (res && res.error) throw res.error;
       if (statusEl) {
@@ -484,26 +490,31 @@
   }
 
   function loadOrders() {
+    if (state.ordersLoading) return Promise.resolve();
     var db = getDb();
     if (!db) {
       state.loadError = 'The order database is not reachable from this page.';
       render();
       return Promise.resolve();
     }
-    return Promise.resolve(
-      db.from('label_orders')
+    state.ordersLoading = true;
+    state.loadError = '';
+    render();
+    return Promise.resolve().then(function () { return db.from('label_orders')
         .select(LIST_COLUMNS)
-        .order('submitted_at', { ascending: false })
-    ).then(function (res) {
+        .order('submitted_at', { ascending: false });
+    }).then(function (res) {
       if (res && res.error) throw res.error;
       state.orders = (res && res.data) || [];
       state.loadError = '';
-      render();
+      state.ordersLoaded = true;
     }).catch(function (err) {
       console.error('Failed to load orders', err);
       state.loadError = 'Could not load orders: ' + (err && err.message ? err.message : 'unknown error')
         + '. If you are signed in with a ' + ALLOWED_DOMAINS[0] + ' account and still '
         + 'see nothing, migration 0007 may not be applied yet.';
+    }).finally(function () {
+      state.ordersLoading = false;
       render();
     });
   }
@@ -749,59 +760,15 @@
   }
 
   /**
-   * Print the record that is currently open, once its images are in.
-   *
-   * Printing straight after render raced the signature and the logo: both are
-   * images, and a print started before they decode comes out with gaps where
-   * they should be.
-   */
-  function printOpenRecord() {
-    var node = document.querySelector('.record-doc');
-    if (!node) return;
-
-    var fired = false;
-    function go() {
-      if (fired) return;
-      fired = true;
-      // Scoped to the record: the print stylesheet keys off this class so the
-      // dashboard behind it does not come out of the printer too.
-      document.body.classList.add('printing-record');
-      var done = function () {
-        document.body.classList.remove('printing-record');
-        window.removeEventListener('afterprint', done);
-      };
-      window.addEventListener('afterprint', done);
-      window.print();
-      // Safari fires afterprint unreliably; this is the belt to that brace.
-      window.setTimeout(done, 1000);
-    }
-
-    var pending = Array.prototype.slice.call(node.querySelectorAll('img'))
-      .filter(function (img) { return !img.complete; });
-    if (!pending.length) { go(); return; }
-
-    var left = pending.length;
-    function oneDone() { if (--left <= 0) go(); }
-    pending.forEach(function (img) {
-      img.addEventListener('load', oneDone);
-      img.addEventListener('error', oneDone);
-    });
-    // Never hang on artwork that will not load.
-    window.setTimeout(go, 1500);
-  }
-
-  /** Open the authorization record, optionally going straight to print. */
-  /**
    * `audience` decides which document opens: 'vendor' is the sheet that goes to
    * Metalcraft, 'record' is the signed customer authorisation kept internally.
    * The authorisation is never dropped from the database or from this page --
    * it just does not belong in front of the supplier.
    */
-  function openRecord(order, andPrint, audience) {
+  function openRecord(order, audience) {
     state.recordId = order.id;
     state.recordAudience = audience === 'record' ? 'record' : 'vendor';
     render();
-    if (andPrint) printOpenRecord();
   }
 
   // ---------------------------------------------------------------------------
@@ -950,21 +917,22 @@
         el('h1', { text: 'Label orders' }),
         el('div', {
           class: 'sub',
-          text: state.orders.length
+          text: !state.ordersLoaded ? (state.loadError ? 'Orders unavailable' : 'Loading orders…') : state.orders.length
             ? state.orders.length + ' order' + (state.orders.length === 1 ? '' : 's') + ' on file'
             : 'No orders on file yet'
         })
       ]),
       el('button', {
         class: 'ghost',
+        disabled: state.ordersLoading ? 'disabled' : null,
         onclick: function () { loadOrders(); }
-      }, 'Refresh')
+      }, state.ordersLoading ? 'Refreshing…' : 'Refresh')
     ]));
 
     var stats = el('div', { class: 'stats' });
     statsFor(state.orders).forEach(function (s) {
       stats.appendChild(el('div', { class: 'stat' + (s.warn ? ' warn' : '') }, [
-        el('div', { class: 'n', text: String(s.n) }),
+        el('div', { class: 'n', text: state.ordersLoaded ? String(s.n) : '—' }),
         el('div', { class: 'l', text: s.l })
       ]));
     });
@@ -995,7 +963,8 @@
       r.appendChild(el('div', { class: 'form-error', role: 'alert', text: state.loadError }));
     }
 
-    var scroll = el('div', { class: 'table-scroll', id: 'tableScroll' });
+    if (state.ordersLoading) r.appendChild(el('div', { class: 'table-loading', role: 'status', text: state.ordersLoaded ? 'Refreshing orders…' : 'Loading orders…' }));
+    var scroll = el('div', { class: 'table-scroll', id: 'tableScroll', 'aria-busy': String(state.ordersLoading) });
     r.appendChild(scroll);
     renderTable();
 
@@ -1006,6 +975,10 @@
       var host = document.getElementById('tableScroll');
       if (!host) return;
       clear(host);
+      if (!state.ordersLoaded) {
+        host.appendChild(el('div', { class: 'table-loading-placeholder', 'aria-hidden': 'true' }));
+        return;
+      }
       var visible = visibleOrders();
       if (!visible.length) {
         host.appendChild(el('div', {
@@ -1102,11 +1075,13 @@
    * live on the row now; the modal keeps its own copies for when it is already
    * open.
    *
-   * "PDF" opens the record and goes straight to the print dialogue, which is
-   * where a PDF actually comes from -- there is no way to hand over a file
-   * without the browser's own save step, and adding a PDF library to do it
-   * would render a second, drifting version of the document.
+   * PDF opens the canonical uploaded document, or the shared server renderer
+   * for an older order without an uploaded artifact.
    */
+  function openOrderPdf(order, audience) {
+    window.open('order-pdf.html?order=' + encodeURIComponent(order.id) + '&audience=' + audience, '_blank', 'noopener');
+  }
+
   function rowActions(order, openDrawer) {
     var wrap = el('div', { class: 'row-actions' });
 
@@ -1133,9 +1108,9 @@
     wrap.appendChild(inputsBtn);
 
     var pdfBtn = el('button', {
-      title: 'Open the signed authorization record and print or save it as a PDF'
+      title: 'Open the vendor PDF attached to the order'
     }, 'PDF');
-    pdfBtn.addEventListener('click', function () { openRecord(order, true, 'vendor'); });
+    pdfBtn.addEventListener('click', function () { openOrderPdf(order, 'vendor'); });
     wrap.appendChild(pdfBtn);
 
     var detailsBtn = el('button', { title: 'Open the full order' }, 'Details');
@@ -1150,9 +1125,7 @@
    *
    * Deliberately built from the same review-block markup and print stylesheet
    * the customer form uses, so what staff read back is the document that was
-   * signed rather than a second rendering of it that could drift. There is no
-   * PDF library here and does not need to be: the browser's own print dialogue
-   * saves to PDF, and that keeps the page free of another CDN dependency.
+   * signed. Its PDF action opens the canonical server-generated artifact.
    */
   function renderRecord() {
     var order = state.orders.filter(function (o) { return o.id === state.recordId; })[0];
@@ -1178,7 +1151,7 @@
 
     sheet.appendChild(el('div', { class: 'record-actions' }, [
       el('span', { class: 'record-which no-print', text: title }),
-      el('button', { class: 'primary', onclick: printOpenRecord },
+      el('button', { class: 'primary', onclick: function () { openOrderPdf(order, state.recordAudience || 'record'); } },
         'Print / save as PDF'),
       el('button', { class: 'ghost', onclick: close }, 'Close')
     ]));
@@ -1281,6 +1254,12 @@
       ['Special instructions', order.instructions]
     ]);
 
+    if (order.logo_choice === 'custom_text') {
+      section('Custom text', (order.text_lines || []).map(function (line, index) {
+        return ['Line ' + (index + 1), line];
+      }));
+    }
+
     section('Authorization', [
       ['Authorized by', order.authorized_name],
       ['Approval date', fmtDate(order.approval_date)],
@@ -1318,24 +1297,39 @@
 
     if (order.logo_choice === 'custom_logo') {
       var artworkStatus = el('div', { class: 'hint', role: 'status' });
+      var artworkPreview = el('div', { class: 'artwork-preview' });
+      var previewStatus = el('p', { class: 'hint', role: 'status', text: 'Loading artwork…' });
+      artworkPreview.appendChild(previewStatus);
+      Promise.resolve(getDb().from('label_orders').select('logo_file_name,logo_file_data').eq('id', order.id).limit(1))
+        .then(function (res) {
+          if (!artworkPreview.isConnected) return;
+          if (res.error) throw res.error;
+          var file = res.data && res.data[0];
+          if (!file || !file.logo_file_data) { previewStatus.textContent = 'No artwork attached.'; return; }
+          if (!/^data:image\/(png|jpeg|jpg|svg\+xml);base64,/i.test(file.logo_file_data)) {
+            previewStatus.textContent = 'PDF artwork selected. Download the original to review it.';
+            return;
+          }
+          // An img keeps SVG inert; never insert customer markup into the page.
+          var image = el('img', { src: file.logo_file_data, alt: 'Customer artwork: ' + (file.logo_file_name || 'uploaded image') });
+          image.onload = function () { previewStatus.remove(); };
+          image.onerror = function () { image.remove(); previewStatus.textContent = 'Preview unavailable. Download the original below.'; };
+          artworkPreview.appendChild(image);
+        }).catch(function () { if (artworkPreview.isConnected) previewStatus.textContent = 'Could not load the preview. Download the original below or reopen this order to retry.'; });
+
       var artworkBtn = el('button', { class: 'primary' }, 'Download artwork');
       artworkBtn.addEventListener('click', function () {
         downloadArtwork(order, artworkBtn, artworkStatus);
       });
       drawer.appendChild(el('div', { class: 'review-block' }, [
         el('h3', { text: 'Artwork' }),
+        artworkPreview,
         el('div', { class: 'review-row' }, [
           el('span', { class: 'k', text: 'File' }),
           el('span', { class: 'v', text: order.logo_file_name || '—' })
         ]),
         el('div', { style: 'margin-top:12px' }, artworkBtn),
-        artworkStatus,
-        el('div', {
-          class: 'artwork-note',
-          text: 'Artwork downloads rather than previewing here. Customer uploads '
-            + 'include SVG, which can carry script, so it is never rendered inside '
-            + 'this page. Open it in a design tool, not a browser tab.'
-        })
+        artworkStatus
       ]));
     }
 
@@ -1394,7 +1388,7 @@
       el('div', { class: 'record-buttons' }, [
         el('button', {
           class: 'primary',
-          onclick: function () { openRecord(order, false, 'vendor'); }
+          onclick: function () { openOrderPdf(order, 'vendor'); }
         }, 'Vendor copy / PDF'),
         emailBtn
       ]),
@@ -1410,7 +1404,7 @@
     drawer.appendChild(el('div', { class: 'review-block' }, [
       el('h3', { text: 'Authorization record' }),
       el('button', {
-        onclick: function () { openRecord(order, false, 'record'); }
+        onclick: function () { openRecord(order, 'record'); }
       }, 'View signed record'),
       el('div', {
         class: 'artwork-note',
@@ -1461,8 +1455,50 @@
   // Boot
   // ---------------------------------------------------------------------------
 
+  // Migrate old bookmarks; each view now has its own reloadable URL.
+  if (new URLSearchParams(location.search).get('view') === 'prepare') {
+    history.replaceState(null, '', 'prepare-order.html' + location.hash);
+  }
+  var adminView = /\/prepare-order(?:\.html)?\/?$/.test(location.pathname) ? 'prepare' : 'orders';
+  window.addEventListener('popstate', function () {
+    adminView = /\/prepare-order(?:\.html)?\/?$/.test(location.pathname) ? 'prepare' : 'orders';
+    renderViews();
+  });
+  var intakeIdentity = null;
+  function renderViews() {
+    var nav = document.getElementById('adminViews');
+    var intake = document.getElementById('orderPreparation');
+    var authenticated = state.phase === 'ready';
+    nav.hidden = !authenticated;
+    root().hidden = authenticated && adminView === 'prepare';
+    intake.hidden = !authenticated || adminView !== 'prepare';
+    nav.querySelectorAll('a').forEach(function (link) {
+      if (link.dataset.view === adminView) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+      link.onclick = function (event) {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        if (link.dataset.view === adminView) return;
+        history.pushState(null, '', link.href);
+        adminView = link.dataset.view;
+        renderViews();
+      };
+    });
+    if (!authenticated) {
+      intake.replaceChildren();
+      intakeIdentity = null;
+    } else if (adminView === 'prepare' && intakeIdentity !== state.email) {
+      intakeIdentity = state.email;
+      // Give each mount its own node so a late response cannot revive a signed-out view.
+      var content = document.createElement('div');
+      intake.replaceChildren(content);
+      window.ToolHoundIntake.mount(content, client, state.session);
+    }
+  }
+
   function render() {
     renderUserSlot();
+    renderViews();
     if (state.phase === 'loading') {
       clear(root()).appendChild(el('p', { class: 'admin-loading', text: 'Loading…' }));
       return;
@@ -1478,6 +1514,7 @@
       state.phase = 'signed_out';
       state.email = '';
       state.orders = [];
+      state.ordersLoaded = false;
       render();
       return;
     }
@@ -1485,6 +1522,7 @@
     if (!domainAllowed(state.email)) {
       state.phase = 'denied';
       state.orders = [];
+      state.ordersLoaded = false;
       render();
       return;
     }
