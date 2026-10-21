@@ -63,7 +63,7 @@ public/            Everything that gets deployed
 supabase/
   migrations/      Versioned schema — the source of truth for the database
   functions/
-    notify-sales/  Edge Function: emails sales@toolhound.com on a new order
+    notify-sales/  Edge Function: emails graham.cooper@toolhound.com on a new order
   config.toml      Function settings (notify-sales runs without a user JWT)
 tests/
   form.spec.js     Customer form, end to end (Playwright)
@@ -223,7 +223,7 @@ what makes the magic-link path safe to offer.
 
 Beacon only, deliberately. `@toolhound.com` was in the allowlist earlier and
 was removed. Worth knowing: the new-order notification goes to
-`sales@toolhound.com`, so whoever reads that inbox needs a Beacon account to
+`graham.cooper@toolhound.com`, so whoever reads that inbox needs a Beacon account to
 open the dashboard link in it. Widening the allowlist again means changing it
 in **two** places that must agree — `ALLOWED_DOMAINS` in `public/admin.js` and
 the regex in `public.is_label_order_staff()` (migration `0006`). The second is
@@ -256,7 +256,7 @@ usually the CSP — check the console for a blocked request.
 
 ## Notifications
 
-Every new order emails `sales@toolhound.com` through a **Supabase Database
+Every new order emails `graham.cooper@toolhound.com` through a **Supabase Database
 Webhook** on `INSERT` into `label_orders`, which calls the `notify-sales` Edge
 Function, which sends through **Resend**.
 
@@ -272,7 +272,7 @@ quantity, sequence range, and authorization, plus a link to the dashboard. It
 never carries the uploaded artwork — same SVG reasoning as above.
 
 **The recipient and the dashboard allowlist do not match.** Notifications go to
-`sales@toolhound.com`; the dashboard admits `beaconsoftware.com` only. So the
+`graham.cooper@toolhound.com`; the dashboard admits `beaconsoftware.com` only. So the
 email lands with someone who cannot follow its link. Resolve it whichever way
 suits: point `NOTIFY_TO` at a Beacon address (or add one alongside — it takes a
 comma-separated list), or put `toolhound.com` back in the allowlist per
@@ -284,7 +284,7 @@ comma-separated list), or put `toolhound.com` back in the allowlist per
 supabase functions deploy notify-sales
 supabase secrets set RESEND_API_KEY=re_...
 supabase secrets set NOTIFY_WEBHOOK_SECRET="$(openssl rand -hex 32)"
-supabase secrets set NOTIFY_TO=sales@toolhound.com
+supabase secrets set NOTIFY_TO=graham.cooper@toolhound.com
 supabase secrets set NOTIFY_FROM='ToolHound Orders <orders@toolhound.com>'
 supabase secrets set DASHBOARD_URL=https://tool-hound-label-order-form.vercel.app/admin
 ```
@@ -385,7 +385,7 @@ Client-side checks are the user experience. The constraints are the guarantee.
   single row can contain, but nothing bounds how many rows arrive. If this
   becomes a problem, put a CAPTCHA or an Edge Function in front of the insert.
 - **No customer confirmation email.** New orders notify
-  `sales@toolhound.com`, but nothing emails the *customer*, and the
+  `graham.cooper@toolhound.com`, but nothing emails the *customer*, and the
   confirmation screen deliberately does not claim otherwise — it directs them
   to print a copy and gives them a phone number. Adding one is a small
   extension of `notify-sales`: a second Resend send to `contact_email`.

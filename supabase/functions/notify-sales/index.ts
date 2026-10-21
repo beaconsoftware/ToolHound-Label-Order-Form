@@ -1,5 +1,5 @@
 /**
- * notify-sales — emails sales@toolhound.com when a label order is filed.
+ * notify-sales — emails graham.cooper@toolhound.com when a label order is filed.
  *
  * Invoked by a Supabase Database Webhook on INSERT into public.label_orders,
  * not by the browser. That matters: the order form submits directly from the
@@ -12,7 +12,7 @@
  * Configure (see README, "Notifications"):
  *   supabase secrets set RESEND_API_KEY=re_...
  *   supabase secrets set NOTIFY_WEBHOOK_SECRET=<long random string>
- *   supabase secrets set NOTIFY_TO=sales@toolhound.com
+ *   supabase secrets set NOTIFY_TO=graham.cooper@toolhound.com
  *   supabase secrets set NOTIFY_FROM='ToolHound Orders <orders@toolhound.com>'
  *   supabase secrets set DASHBOARD_URL=https://tool-hound-label-order-form.vercel.app/admin
  */
@@ -186,7 +186,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let from: string;
   try {
     resendKey = requiredEnv('RESEND_API_KEY');
-    to = Deno.env.get('NOTIFY_TO') || 'sales@toolhound.com';
+    to = Deno.env.get('NOTIFY_TO') || 'graham.cooper@toolhound.com';
     from = requiredEnv('NOTIFY_FROM');
   } catch (err) {
     console.error(err);

@@ -326,36 +326,6 @@
       || ALLOWED_EMAILS.includes(String(email).toLowerCase());
   }
 
-  function sendMagicLink(email, button, statusEl) {
-    if (!client) return;
-    if (!email) {
-      if (statusEl) statusEl.textContent = 'Enter your email address first.';
-      return;
-    }
-    if (!domainAllowed(email)) {
-      if (statusEl) statusEl.textContent = 'Enter an authorized Beacon email address or Graham’s ToolHound address.';
-      return;
-    }
-    if (button) { button.disabled = true; button.textContent = 'Sending…'; }
-    Promise.resolve(client.auth.signInWithOtp({
-      email: email,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname }
-    })).then(function (res) {
-      if (res && res.error) throw res.error;
-      if (statusEl) {
-        statusEl.textContent = 'Check ' + email + ' for a sign-in link.';
-      }
-    }).catch(function (err) {
-      console.error('Magic link request failed', err);
-      if (statusEl) {
-        statusEl.textContent = 'Could not send the link: '
-          + (err && err.message ? err.message : 'unknown error');
-      }
-    }).then(function () {
-      if (button) { button.disabled = false; button.textContent = 'Email me a sign-in link'; }
-    });
-  }
-
   function signOut() {
     if (!client) return;
     Promise.resolve(client.auth.signOut()).then(function () {
@@ -806,37 +776,90 @@
   }
 
   function renderSignedOut() {
-    var box = el('div', { class: 'gate' }, [
-      el('div', { class: 'gate-icon', text: '🔐' }),
-      el('h1', { text: 'ToolHound Label Orders' }),
-      el('p', { text: 'Sign in with your Beacon account or Graham’s ToolHound account.' })
-    ]);
-
-    if (authError) {
-      box.appendChild(el('div', { class: 'form-error', role: 'alert', text: authError }));
+    var sentEmail = '', busy = false, retryAt = 0, timer;
+    var box = el('section', { class: 'gate auth-card', 'aria-labelledby': 'auth-title' });
+    var eyebrow = el('p', { class: 'auth-eyebrow', text: 'TOOLHOUND · STAFF ACCESS' });
+    var title = el('h1', { id: 'auth-title', tabindex: '-1', text: 'Sign in to label orders' });
+    var description = el('p', { class: 'auth-description', text: 'Enter your work email to receive a secure sign-in link. No password needed.' });
+    var form = el('form', { class: 'auth-form', novalidate: '' });
+    var input = el('input', { id: 'auth-email', type: 'email', autocomplete: 'email', required: '',
+      placeholder: 'you@beaconsoftware.com', 'aria-describedby': 'auth-access auth-error', autocapitalize: 'none', spellcheck: 'false' });
+    var field = el('div', { class: 'field' }, [el('label', { for: 'auth-email', text: 'Work email' }), input]);
+    var error = el('p', { id: 'auth-error', class: 'auth-error', role: 'alert' });
+    var status = el('p', { class: 'auth-status', role: 'status' });
+    var button = el('button', { type: 'submit', class: 'primary' }, 'Send sign-in link');
+    var cooldown = el('p', { class: 'auth-cooldown' });
+    var change = el('button', { type: 'button', class: 'secondary' }, 'Use a different email');
+    change.hidden = true;
+    var help = el('p', { id: 'auth-access', class: 'auth-access', text: 'For authorized Beacon staff and Graham Cooper at ToolHound.' });
+    function updateButton() {
+      var seconds = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
+      button.disabled = busy || seconds > 0;
+      button.textContent = busy ? 'Sending…' : sentEmail ? 'Resend sign-in link' : 'Send sign-in link';
+      cooldown.textContent = seconds ? 'You can request another link in ' + seconds + 's.' : '';
     }
-
-    var emailInput = el('input', {
-      type: 'email',
-      placeholder: 'you@' + ALLOWED_DOMAINS[0],
-      autocomplete: 'username',
-      'aria-label': 'Work email'
+    function startCooldown(seconds) {
+      retryAt = Date.now() + seconds * 1000;
+      clearInterval(timer);
+      timer = setInterval(function () {
+        if (!box.isConnected || Date.now() >= retryAt) clearInterval(timer);
+        updateButton();
+      }, 1000);
+    }
+    change.addEventListener('click', function () {
+      sentEmail = ''; field.hidden = false; change.hidden = true;
+      title.textContent = 'Sign in to label orders';
+      description.textContent = 'Enter your work email to receive a secure sign-in link. No password needed.';
+      help.textContent = 'For authorized Beacon staff and Graham Cooper at ToolHound.';
+      error.textContent = ''; status.textContent = ''; updateButton(); input.focus(); input.select();
     });
-    var linkStatus = el('div', { class: 'hint', role: 'status' });
-    var linkBtn = el('button', { class: 'primary' }, 'Email me a sign-in link');
-    linkBtn.addEventListener('click', function () {
-      sendMagicLink(emailInput.value.trim().toLowerCase(), linkBtn, linkStatus);
-    });
-    emailInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        sendMagicLink(emailInput.value.trim().toLowerCase(), linkBtn, linkStatus);
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      if (busy || Date.now() < retryAt) return;
+      var email = sentEmail || input.value.trim().toLowerCase();
+      error.textContent = ''; status.textContent = ''; input.removeAttribute('aria-invalid');
+      if (!email || !input.validity.valid || !domainAllowed(email)) {
+        error.textContent = !email ? 'Enter your email address first.' : !input.validity.valid
+          ? 'Enter a valid email address.' : 'Enter an authorized Beacon email address or Graham’s ToolHound address.';
+        input.setAttribute('aria-invalid', 'true'); input.focus(); return;
+      }
+      busy = true; input.disabled = true; change.disabled = true;
+      form.setAttribute('aria-busy', 'true'); updateButton();
+      try {
+        var res = await client.auth.signInWithOtp({ email: email,
+          options: { emailRedirectTo: window.location.origin + window.location.pathname + window.location.search } });
+        if (res && res.error) throw res.error;
+        var wasSent = !!sentEmail;
+        sentEmail = email; field.hidden = true; change.hidden = false;
+        title.textContent = 'Check your email';
+        clear(description).appendChild(document.createTextNode('We sent a sign-in link to '));
+        description.appendChild(el('strong', { text: email }));
+        description.appendChild(document.createTextNode('. Open it to continue.'));
+        help.textContent = 'Can’t find it? Check your spam folder, or request another link.';
+        status.textContent = wasSent ? 'A new sign-in link has been sent.' : '';
+        startCooldown(60);
+        title.focus();
+      } catch (err) {
+        var message = String(err && err.message || '');
+        if (err && err.code === 'over_email_send_rate_limit' || /email rate limit exceeded/i.test(message)) {
+          error.textContent = 'Sign-in emails are temporarily unavailable. Try again later or contact your administrator.';
+        } else if (err && err.status === 429 || /after \d+ seconds|security purposes/i.test(message)) {
+          var match = message.match(/after (\d+) seconds/i);
+          startCooldown(match ? Math.max(1, Number(match[1])) : 60);
+          error.textContent = 'Please wait before requesting another link.';
+        } else {
+          error.textContent = 'We couldn’t send the link. Check your connection and try again.';
+        }
+      } finally {
+        busy = false; input.disabled = false; change.disabled = false;
+        form.removeAttribute('aria-busy'); updateButton();
       }
     });
-
-    box.appendChild(el('div', { class: 'field' }, [emailInput]));
-    box.appendChild(el('div', { class: 'signin-actions' }, [linkBtn]));
-    box.appendChild(linkStatus);
-
+    form.appendChild(field); form.appendChild(error); form.appendChild(status);
+    form.appendChild(button); form.appendChild(cooldown); form.appendChild(change);
+    box.appendChild(eyebrow); box.appendChild(title); box.appendChild(description);
+    if (authError) box.appendChild(el('div', { class: 'form-error', role: 'alert', text: authError + ' Request a new sign-in link below.' }));
+    box.appendChild(form); box.appendChild(help);
     clear(root()).appendChild(box);
   }
 
