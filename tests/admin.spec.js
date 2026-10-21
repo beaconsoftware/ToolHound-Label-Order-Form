@@ -256,9 +256,9 @@ test('refuses to render when the order system is unreachable', async ({ page }) 
 test('shows the sign-in gate when nobody is signed in', async ({ page }) => {
   await openDashboard(page, { email: null });
 
-  await expect(page.getByRole('heading', { name: 'ToolHound Label Orders' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in to label orders' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue with Google' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Email me a sign-in link' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeVisible();
   await expect(page.getByText('Northgate Mining')).toHaveCount(0);
 });
 
@@ -266,16 +266,16 @@ test('requests a magic link for a typed address', async ({ page }) => {
   await openDashboard(page, { email: null });
 
   await page.getByLabel('Work email').fill('Ian.Wilson@BeaconSoftware.com');
-  await page.getByRole('button', { name: 'Email me a sign-in link' }).click();
+  await page.getByRole('button', { name: 'Send sign-in link' }).click();
 
-  await expect(page.getByText(/Check ian\.wilson@beaconsoftware\.com for a sign-in link/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
   const otp = await page.evaluate(() => window.__AUTH_CALLS__.otp);
   expect(otp[0].email).toBe('ian.wilson@beaconsoftware.com');
 });
 
 test('a magic link request with no address asks for one', async ({ page }) => {
   await openDashboard(page, { email: null });
-  await page.getByRole('button', { name: 'Email me a sign-in link' }).click();
+  await page.getByRole('button', { name: 'Send sign-in link' }).click();
 
   await expect(page.getByText('Enter your email address first.')).toBeVisible();
   expect(await page.evaluate(() => window.__AUTH_CALLS__.otp)).toEqual([]);
@@ -1103,4 +1103,65 @@ test('rejects ToolHound accounts other than Graham', async ({ page }) => {
   await openDashboard(page, { email: 'other@toolhound.com' });
   await expect(page.getByRole('heading', { name: 'Label orders', exact: true })).not.toBeVisible();
   await expect(page.getByText('This dashboard is restricted to', { exact: false })).toBeVisible();
+});
+
+test('email confirmation supports cooldown, resend and changing address', async ({ page }) => {
+  await page.clock.install();
+  await openDashboard(page, { email: null });
+  await page.getByLabel('Work email').fill('ian.wilson@beaconsoftware.com');
+  await page.getByLabel('Work email').press('Enter');
+  await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+  const resend = page.getByRole('button', { name: 'Resend sign-in link' });
+  await expect(resend).toBeDisabled();
+  await expect(page.getByText('ian.wilson@beaconsoftware.com', { exact: true })).toBeVisible();
+  await page.clock.fastForward(61000);
+  await expect(resend).toBeEnabled();
+  await resend.click();
+  await expect(page.getByRole('status')).toHaveText('A new sign-in link has been sent.');
+  expect(await page.evaluate(() => window.__AUTH_CALLS__.otp.length)).toBe(2);
+  await page.screenshot({ path: '/tmp/toolhound-auth-sent.png' });
+  await page.getByRole('button', { name: 'Use a different email' }).click();
+  await expect(page.getByLabel('Work email')).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeDisabled();
+});
+
+test('auth form prevents duplicate sends and recovers from network failure', async ({ page }) => {
+  await openDashboard(page, { email: null });
+  await page.evaluate(() => {
+    window.__TOOLHOUND_CLIENT__.auth.signInWithOtp = () => new Promise((resolve, reject) => { window.failSend = reject; });
+  });
+  await page.getByLabel('Work email').fill('ian.wilson@beaconsoftware.com');
+  await page.getByRole('button', { name: 'Send sign-in link' }).click();
+  await expect(page.getByRole('button', { name: 'Sending…' })).toBeDisabled();
+  await expect(page.getByLabel('Work email')).toBeDisabled();
+  await page.evaluate(() => window.failSend(new Error('Network error')));
+  await expect(page.getByRole('alert')).toHaveText('We couldn’t send the link. Check your connection and try again.');
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeEnabled();
+});
+
+test('rate limited auth requests have an actionable cooldown', async ({ page }) => {
+  await page.clock.install();
+  await openDashboard(page, { email: null });
+  await page.evaluate(() => {
+    window.__TOOLHOUND_CLIENT__.auth.signInWithOtp = async () => ({ error: { status: 429, message: 'For security purposes, you can only request this after 50 seconds.' } });
+  });
+  await page.getByLabel('Work email').fill('ian.wilson@beaconsoftware.com');
+  await page.getByRole('button', { name: 'Send sign-in link' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Please wait before requesting another link.');
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeDisabled();
+  await page.clock.fastForward(51000);
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeEnabled();
+});
+
+test('auth card fits a narrow screen and preserves the preparation return URL', async ({ page }) => {
+  await stubClient(page, { email: null });
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/admin.html?view=prepare');
+  await page.screenshot({ path: '/tmp/toolhound-auth-mobile.png' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByLabel('Work email').fill('ian.wilson@beaconsoftware.com');
+  await page.getByRole('button', { name: 'Send sign-in link' }).click();
+  await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+  expect(await page.evaluate(() => window.__AUTH_CALLS__.otp[0].options.emailRedirectTo)).toContain('/prepare-order.html');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

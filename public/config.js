@@ -24,7 +24,7 @@
     tollFree: '+1-800-387-8665',
     generalEmail: 'info@toolhound.com',
     supportEmail: 'support@toolhound.com',
-    salesEmail: 'sales@toolhound.com',
+    salesEmail: 'graham.cooper@toolhound.com',
     website: 'https://www.toolhound.com/'
   },
 
@@ -34,7 +34,7 @@
   // chance of a reader picking the wrong block.
   orderedBy: {
     name: 'ToolHound, Inc.',
-    salesEmail: 'sales@toolhound.com',
+    salesEmail: 'graham.cooper@toolhound.com',
     accountingEmail: 'accounting@toolhound.com',
     phone: '1 (800) 387-8665'
   },

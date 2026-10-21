@@ -45,7 +45,7 @@ async function stub(page, options = {}) {
 test('intake requires sign in and rejects lookalike work domains', async ({page}) => {
   await stub(page, { signedOut: true }); await page.goto('/prepare-order.html');
   await page.getByLabel('Work email').fill('intruder@toolhound.com.evil.example');
-  await page.getByRole('button', {name:'Email me a sign-in link'}).click();
+  await page.getByRole('button', {name:'Send sign-in link'}).click();
   await expect(page.getByText('Enter an authorized Beacon email address or Graham’s ToolHound address.')).toBeVisible();
   expect(await page.evaluate(() => window.__CALLS__)).toEqual([]);
 });
@@ -113,7 +113,7 @@ for (const path of ['/linear-barcode.html', '/qr-code.html', '/linear-barcode.ht
     await stub(page); await page.goto(path);
     await expect(page).toHaveURL(/\/request-link\.html$/);
     await expect(page.getByRole('heading', {name:'Get your order link'})).toBeVisible();
-    await expect(page.getByRole('link', {name:'sales@toolhound.com'})).toHaveAttribute('href','mailto:sales@toolhound.com');
+    await expect(page.getByRole('link', {name:'graham.cooper@toolhound.com'})).toHaveAttribute('href','mailto:graham.cooper@toolhound.com');
     await expect(page.getByLabel('Company Name *')).toHaveCount(0);
   });
 }

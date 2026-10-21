@@ -6,7 +6,8 @@
 
 .admin{background:#F4F1EE;}
 
-.topbar-right{display:flex;align-items:center;gap:14px;}
+.admin .topbar{flex-wrap:wrap;gap:12px;}
+.topbar-right{display:flex;align-items:center;gap:14px;min-width:0;flex-wrap:wrap;}
 .topbar-tag{
   font-size:11.5px;
   font-weight:700;
@@ -567,3 +568,22 @@ button.danger-outline:hover{border-color:#C0392B;background:#fdf6f5;}
 .record-actions{flex-wrap:wrap;align-items:center;}
 .record-actions button{flex:0 0 auto;white-space:nowrap;}
 .record-which{flex:1 1 220px;min-width:0;overflow-wrap:anywhere;}
+
+/* Shared email authentication: entry, sending, confirmation and recovery. */
+.gate.auth-card{max-width:440px;text-align:start;border:1px solid var(--line);padding:32px;}
+.auth-card .auth-eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;margin-block-end:24px;}
+.auth-card h1{font-size:26px;line-height:1.2;letter-spacing:-.025em;margin-block-end:12px;}
+.auth-card h1:focus{outline:none;}
+.auth-card .auth-description{margin:0;overflow-wrap:anywhere;}
+.auth-card .auth-description strong{color:var(--ink);font-weight:600;}
+.auth-form{margin-block-start:28px;display:flex;flex-direction:column;gap:12px;}
+.auth-form [hidden]{display:none;}
+.auth-card .field label{display:block;font-size:14px;font-weight:600;margin-block-end:8px;}
+.auth-card .field input{min-height:48px;border-color:var(--color-border-control);background:var(--paper);}
+.auth-form button{width:100%;min-height:48px;}
+.auth-card .auth-error{color:var(--color-danger-text);font-size:13px;margin:0;}
+.auth-card .auth-status{color:var(--color-success-text);font-size:13px;margin:0;}
+.auth-card .auth-error:empty,.auth-card .auth-status:empty,.auth-card .auth-cooldown:empty{display:none;}
+.auth-card .auth-cooldown{font-size:12px;text-align:center;margin:0;font-variant-numeric:tabular-nums;}
+.auth-card .auth-access{font-size:12px;margin:24px 0 0;}
+@media(max-width:480px){.gate.auth-card{margin:24px auto;padding:24px;}}

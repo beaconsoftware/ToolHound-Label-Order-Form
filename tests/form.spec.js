@@ -1234,13 +1234,12 @@ test.describe('label order document', () => {
     await expect(doc).not.toContainText('St Albert');
   });
 
-  test('correspondence goes to the shared mailboxes, not a person',
+  test('correspondence goes to Graham and accounting',
     async ({ page }) => {
       await submitOrder(page);
       const doc = page.locator('.order-doc');
-      await expect(doc).toContainText('sales@toolhound.com');
+      await expect(doc).toContainText('graham.cooper@toolhound.com');
       await expect(doc).toContainText('accounting@toolhound.com');
-      await expect(doc).not.toContainText('graham.cooper@toolhound.com');
     });
 
   test('the sequence splits into prefix, from and to', async ({ page }) => {
@@ -1422,7 +1421,7 @@ test.describe('two forms', () => {
   test('the landing page asks customers to request a personal link', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.getByRole('heading', { name: 'Get your order link' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'sales@toolhound.com' })).toHaveAttribute('href', 'mailto:sales@toolhound.com');
+    await expect(page.getByRole('link', { name: 'graham.cooper@toolhound.com' })).toHaveAttribute('href', 'mailto:graham.cooper@toolhound.com');
     await expect(page.getByLabel('Company Name *')).toHaveCount(0);
   });
 });
