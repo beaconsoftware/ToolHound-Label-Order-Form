@@ -16,11 +16,15 @@
         },
         {
           "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
+          "value": "no-referrer"
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://ayqcteloqdrlemehozzk.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+          "value": "default-src 'self'; script-src 'self' 'sha256-Sl7BdnpJUZypYHDm4Psn7tUicVvG59U3TXrwYTD07z0=' 'sha256-la4MtwkXpc+jF5I9V495g5xlx3EI8RNIESAs+zRX7Ts=' 'sha256-rRgEZ5lw2Z/7QUQa7Deot6GGTsljFpvQ/Aqb7MZohIk=' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://ayqcteloqdrlemehozzk.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
         }
       ]
     },
@@ -37,11 +41,15 @@
         },
         {
           "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
+          "value": "no-referrer"
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://ayqcteloqdrlemehozzk.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+          "value": "default-src 'self'; script-src 'self' 'sha256-Sl7BdnpJUZypYHDm4Psn7tUicVvG59U3TXrwYTD07z0=' 'sha256-la4MtwkXpc+jF5I9V495g5xlx3EI8RNIESAs+zRX7Ts=' 'sha256-rRgEZ5lw2Z/7QUQa7Deot6GGTsljFpvQ/Aqb7MZohIk=' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://ayqcteloqdrlemehozzk.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
         }
       ]
     },
@@ -58,7 +66,7 @@
         },
         {
           "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
+          "value": "no-referrer"
         },
         {
           "key": "X-Robots-Tag",
@@ -66,7 +74,24 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://ayqcteloqdrlemehozzk.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'sha256-Sl7BdnpJUZypYHDm4Psn7tUicVvG59U3TXrwYTD07z0=' 'sha256-la4MtwkXpc+jF5I9V495g5xlx3EI8RNIESAs+zRX7Ts=' 'sha256-rRgEZ5lw2Z/7QUQa7Deot6GGTsljFpvQ/Aqb7MZohIk=' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://ayqcteloqdrlemehozzk.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    },
+    {
+      "source": "/:path(prepare-order|quote|order-pdf)(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
         }
       ]
     }

@@ -6,8 +6,8 @@
  * -> production confirmed -> shipped; the stage timestamps are written by a
  * database trigger, not by this page.
  *
- * Access: Supabase Auth — Google for Beacon accounts, or an emailed sign-in
- * link — then a Beacon email domain check. The check below decides what
+ * Access: Supabase Auth through an emailed sign-in link, followed by a staff
+ * authorization check. The check below decides what
  * renders and nothing more. The actual boundary is the RLS policy in
  * supabase/migrations/0006_restrict_staff_reads.sql, which runs on every
  * request whether it came from this page or from curl. Treating the JavaScript
@@ -31,7 +31,8 @@
    * public.is_label_order_staff() in migration 0006, so changing the allowlist
    * means changing it there too — and that is the one that matters.
    */
-  var ALLOWED_DOMAINS = ['beaconsoftware.com', 'toolhound.com'];
+  var ALLOWED_DOMAINS = ['beaconsoftware.com'];
+  var ALLOWED_EMAILS = ['graham.cooper@toolhound.com'];
 
 
   var STATUSES = [
@@ -315,26 +316,14 @@
   }
 
   function domainAllowed(email) {
-    var at = String(email || '').lastIndexOf('@');
+    email = String(email || '').toLowerCase();
+    var at = email.lastIndexOf('@');
     if (at < 1) return false;
     var domain = email.slice(at + 1);
     // Exact domain match, not a suffix test: `beaconsoftware.com.attacker.example`
     // and `notbeaconsoftware.com` must both fail, and so must a subdomain.
-    return ALLOWED_DOMAINS.some(function (d) { return domain === d; });
-  }
-
-  function signInWithGoogle() {
-    if (!client) return;
-    client.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + window.location.pathname,
-        // Points Google's own account picker at the right domain. A
-        // convenience, not a restriction — it is trivially removable from the
-        // URL, which is why the domain is checked again in the policy.
-        queryParams: { hd: ALLOWED_DOMAINS[0] }
-      }
-    });
+    return ALLOWED_DOMAINS.some(function (d) { return domain === d.toLowerCase(); })
+      || ALLOWED_EMAILS.includes(String(email).toLowerCase());
   }
 
   function sendMagicLink(email, button, statusEl) {
@@ -344,7 +333,7 @@
       return;
     }
     if (!domainAllowed(email)) {
-      if (statusEl) statusEl.textContent = 'Enter a Beacon or ToolHound email address.';
+      if (statusEl) statusEl.textContent = 'Enter an authorized Beacon email address or Graham’s ToolHound address.';
       return;
     }
     if (button) { button.disabled = true; button.textContent = 'Sending…'; }
@@ -820,19 +809,12 @@
     var box = el('div', { class: 'gate' }, [
       el('div', { class: 'gate-icon', text: '🔐' }),
       el('h1', { text: 'ToolHound Label Orders' }),
-      el('p', { text: 'Sign in with your ' + ALLOWED_DOMAINS.join(' or ') + ' account.' })
+      el('p', { text: 'Sign in with your Beacon account or Graham’s ToolHound account.' })
     ]);
 
     if (authError) {
       box.appendChild(el('div', { class: 'form-error', role: 'alert', text: authError }));
     }
-
-    box.appendChild(el('div', { class: 'signin-actions' }, [
-      el('button', { class: 'primary', onclick: signInWithGoogle },
-        'Continue with Google')
-    ]));
-
-    box.appendChild(el('div', { class: 'signin-divider', text: 'or' }));
 
     var emailInput = el('input', {
       type: 'email',
@@ -841,7 +823,7 @@
       'aria-label': 'Work email'
     });
     var linkStatus = el('div', { class: 'hint', role: 'status' });
-    var linkBtn = el('button', { class: 'ghost' }, 'Email me a sign-in link');
+    var linkBtn = el('button', { class: 'primary' }, 'Email me a sign-in link');
     linkBtn.addEventListener('click', function () {
       sendMagicLink(emailInput.value.trim().toLowerCase(), linkBtn, linkStatus);
     });
@@ -862,7 +844,7 @@
     var email = state.email || 'an unknown address';
     var explain = el('p', {}, [
       'This dashboard is restricted to ',
-      el('strong', { text: ALLOWED_DOMAINS.join(' or ') }),
+      el('strong', { text: 'Beacon staff and Graham Cooper' }),
       ' accounts. You are signed in as ',
       el('code', { text: email }),
       '.'

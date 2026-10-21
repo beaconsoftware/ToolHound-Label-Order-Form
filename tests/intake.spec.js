@@ -15,7 +15,7 @@ async function stub(page, options = {}) {
       customer_url: location.origin + '/linear-barcode.html#request=' + id + '&token=' + 'a'.repeat(64) };
     const client = {
       auth: {
-        getSession: async () => ({ data: { session: options.signedOut ? null : { user: { email: options.email || 'graham@toolhound.com' } } } }),
+        getSession: async () => ({ data: { session: options.signedOut ? null : { user: { email: options.email || 'graham.cooper@toolhound.com' } } } }),
         signInWithOtp: async args => { window.__CALLS__.push(args); return {}; },
         signOut: async () => ({})
       },
@@ -46,10 +46,10 @@ test('intake requires sign in and rejects lookalike work domains', async ({page}
   await stub(page, { signedOut: true }); await page.goto('/prepare-order.html');
   await page.getByLabel('Work email').fill('intruder@toolhound.com.evil.example');
   await page.getByRole('button', {name:'Email me a sign-in link'}).click();
-  await expect(page.getByText('Enter a Beacon or ToolHound email address.')).toBeVisible();
+  await expect(page.getByText('Enter an authorized Beacon email address or Graham’s ToolHound address.')).toBeVisible();
   expect(await page.evaluate(() => window.__CALLS__)).toEqual([]);
 });
-for (const email of ['graham@toolhound.com', 'steve@beaconsoftware.com']) {
+for (const email of ['graham.cooper@toolhound.com', 'steve@beaconsoftware.com']) {
   test('intake allows ' + email, async ({ page }) => {
     await stub(page, {email}); await page.goto('/prepare-order.html');
     await expect(page.getByRole('heading', {name:'New customer request'})).toBeVisible();

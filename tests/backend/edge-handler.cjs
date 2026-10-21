@@ -8,11 +8,18 @@ const id = '20000000-0000-4000-8000-000000000001';
 function runtime(options = {}) {
  const rows = new Map(); const issues = new Map(); const events = []; let handler; let lose = !!options.loseCreate;
  const env = { SUPABASE_URL:'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY:'private', ORDER_APP_URL:'https://orders.example',
-  ORDER_LINK_SECRET:'test-secret-with-at-least-32-characters',ORDER_REQUESTS_MODE:options.mode || 'live',
+  ORDER_ALLOWED_ORIGINS:options.origins||'',ORDER_LINK_SECRET:'test-secret-with-at-least-32-characters',ORDER_REQUESTS_MODE:options.mode || 'live',
   ORDER_INTEGRATION_PROVIDER:options.disabled?'none':options.provider,LINEAR_LABEL_ORDER_TEMPLATE_ID:options.templateId,LINEAR_API_KEY:'private-linear',LINEAR_TEAM_ID:'team',LINEAR_INTAKE_STATE_ID:'state' };
  const jobs = new Map(), tasks = [];
- const db={auth:{getUser:async token=>({data:{user:token==='staff'?{id:'staff', email:options.email||'graham@toolhound.com',email_confirmed_at:options.unconfirmed?null:'2026-01-01'}:null},error:token!=='staff'})},
+ const db={auth:{getUser:async token=>({data:{user:token==='staff'?{id:'staff', email:options.email||'graham.cooper@toolhound.com',email_confirmed_at:options.unconfirmed?null:'2026-01-01'}:null},error:token!=='staff'})},
  rpc: async (name,args)=>{
+  if(name==='is_label_order_staff') {
+   const address=(options.email || 'graham.cooper@toolhound.com').toLowerCase();
+   return {data:!options.denied && (address.split('@')[1]==='beaconsoftware.com' || address==='graham.cooper@toolhound.com'),error:options.authRpcError};
+  }
+  if(name==='regenerate_order_request') {
+   Object.assign(rows.get(args.p_id),{token_version:args.p_version+1,token_hash:args.p_token_hash});return {data:null};
+  }
   if(name==='create_order_request') {
    const v=args.p_request;
    if(!rows.has(v.id)) {
@@ -75,14 +82,14 @@ function runtime(options = {}) {
  const source=['linear-adapter.ts','integrations.ts','index.ts'].map(file=>fs.readFileSync('supabase/functions/order-requests/'+file,'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')).join('\n');
  const context={structuredClone,createClient:()=>db,EdgeRuntime:{waitUntil:p=>tasks.push(p)},Deno:{env:{get:k=>env[k]},serve:fn=>{handler=fn;}},TextEncoder,TextDecoder,Uint8Array,Headers,Request,Response,URL,crypto:webcrypto,fetch:fakeFetch,AbortSignal,atob,btoa,generateOrderPdf:async()=>new TextEncoder().encode("%PDF-test"),console};
  vm.runInNewContext(stripTypeScriptTypes(source),context);
- return {rows,issues,events,jobs,flush:async()=>{await Promise.all(tasks);},call:async(body,bearer='staff')=>{
-  const res=await handler(new Request('https://example.supabase.co/functions/v1/order-requests',{method:'POST',headers:{authorization:'Bearer '+bearer,origin:env.ORDER_APP_URL},body:JSON.stringify(body)}));
+ return {raw:handler,rows,issues,events,jobs,flush:async()=>{await Promise.all(tasks);},call:async(body,bearer='staff',extraHeaders={})=>{
+  const res=await handler(new Request('https://example.supabase.co/functions/v1/order-requests',{method:'POST',headers:{authorization:'Bearer '+bearer,origin:env.ORDER_APP_URL,...extraHeaders},body:JSON.stringify(body)}));
   return {status:res.status,data:await res.json()};
  }};
 }
 const payload={action:'create',id,company_name:'Acme',contact_name:'Dana',contact_email:'dana@acme.example',barcode_type:'linear',quote_name:'quote.pdf',quote_data:Buffer.from('%PDF-1.7\n%%EOF').toString('base64'),salesforce_url:'https://example.salesforce.com/private'};
 test('staff boundary rejects unauthenticated, unconfirmed and lookalike identities',async()=>{
- for(const [options,bearer] of [[{},'anon'],[{email:'graham@toolhound.com.evil.example'},'staff'],[{unconfirmed:true},'staff']]) {
+ for(const [options,bearer] of [[{},'anon'],[{email:'graham.cooper@toolhound.com.evil.example'},'staff'],[{unconfirmed:true},'staff']]) {
   const r=runtime(options);const result=await r.call(payload,bearer);assert.equal(result.status,400);assert.equal(r.rows.size,0);assert.equal(r.events.length,0);
  }
 });
@@ -141,4 +148,53 @@ test('order PDF requires staff and returns the exact attached artifact or shared
  const fallback=await r.call({action:'order_pdf',id:orderId,audience:'record'});
  assert.equal(Buffer.from(fallback.data.pdf_data,'base64').toString(),'%PDF-test');
  assert.equal((await r.call({action:'order_pdf',id:orderId,audience:'invalid'})).status,400);
+});
+
+test('every staff action uses database authorization and fails closed',async()=>{
+ for(const options of [{email:'other@toolhound.com'},{email:'staff@beaconsoftware.com',denied:true},{authRpcError:{message:'Unavailable'}}]) {
+  const r=runtime(options);
+  for(const action of ['create','list','quote','order_pdf','recover','regenerate','revoke','mark_sent','sync']) {
+   const res=await r.call({...payload,action}); assert.equal(res.status,400); assert.equal(r.events.length,0);
+  }
+ }
+ const r=runtime({email:'staff@beaconsoftware.com',mode:'shadow'});
+ assert.equal((await r.call(payload)).status,200);
+});
+test('oversized streaming bodies, declared sizes, and non-object JSON are rejected',async()=>{
+ const r=runtime({mode:'shadow'});
+ for(const body of [null,[],true]) assert.equal((await r.call(body)).status,400);
+ assert.equal((await r.call({...payload,quote_data:'a'.repeat(14_500_001)})).status,400);
+ assert.equal((await r.call(payload,'staff',{'content-length':'14500001'})).status,400);
+ assert.equal(r.rows.size,0);assert.equal(r.events.length,0);
+});
+
+test('explicit local origins select the saved customer link destination',async()=>{
+ const r=runtime({mode:'shadow',origins:'http://127.0.0.1:4175,http://localhost:4175'});
+ const result=await r.call(payload,'staff',{origin:'http://127.0.0.1:4175'});
+ assert.equal(result.status,200);assert.ok(result.data.customer_url.startsWith('http://127.0.0.1:4175/'));
+ assert.equal(r.rows.get(id).app_origin,'http://127.0.0.1:4175');
+ const recovered=await r.call({action:'recover',id});
+ assert.equal(recovered.data.customer_url,result.data.customer_url);
+ const regenerated=await r.call({action:'regenerate',id,token_version:1});
+ assert.ok(regenerated.data.customer_url.startsWith('http://127.0.0.1:4175/'));
+ assert.notEqual(regenerated.data.customer_url,result.data.customer_url);
+ for(const origin of ['https://orders.example','http://127.0.0.1:4175','http://localhost:4175']) {
+  const res=await r.raw(new Request('https://example.supabase.co',{method:'OPTIONS',headers:{origin}}));
+  assert.equal(res.status,200);assert.equal(res.headers.get('access-control-allow-origin'),origin);
+ }
+ for(const origin of ['https://evil.example','null','http://localhost:9999','https://orders.example.evil.example']) {
+  const res=await r.raw(new Request('https://example.supabase.co',{method:'OPTIONS',headers:{origin}}));
+  assert.equal(res.status,403);assert.equal(res.headers.get('access-control-allow-origin'),null);
+ }
+});
+
+test('missing Origin uses canonical URL; legacy requests ignore the recovering browser origin',async()=>{
+ const r=runtime({mode:'shadow',origins:'http://localhost:4175'});
+ const response=await r.raw(new Request('https://example.supabase.co',{method:'POST',headers:{authorization:'Bearer staff'},body:JSON.stringify({...payload,app_origin:'https://evil.example'})}));
+ const created=await response.json();
+ assert.match(created.customer_url,/^https:\/\/orders.example\//);
+ assert.equal(r.rows.get(id).app_origin,'https://orders.example');
+ delete r.rows.get(id).app_origin;
+ const recovered=await r.call({action:'recover',id},'staff',{origin:'http://localhost:4175'});
+ assert.match(recovered.data.customer_url,/^https:\/\/orders.example\//);
 });
