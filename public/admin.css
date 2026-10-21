@@ -115,13 +115,13 @@
 .filter.on{background:var(--red);border-color:var(--red);color:#fff;}
 
 /* --- table ---------------------------------------------------------------- */
-.table-scroll{
+.table-scroll, .request-table-scroll{
   background:var(--paper);
   border:1px solid var(--line);
   border-radius:14px;
   overflow-x:auto;
 }
-table.orders{
+table.orders, table.request-table{
   width:100%;
   border-collapse:collapse;
   font-size:13.5px;
@@ -129,7 +129,7 @@ table.orders{
      narrow window scrolls rather than wrapping the buttons into two rows. */
   min-width:1080px;
 }
-table.orders th{
+:is(table.orders, table.request-table) th{
   text-align:left;
   font-size:11px;
   text-transform:uppercase;
@@ -141,13 +141,15 @@ table.orders th{
   white-space:nowrap;
   background:var(--cream);
 }
-table.orders td{
+:is(table.orders, table.request-table) td{
   padding:12px 14px;
   border-bottom:1px solid var(--line);
   vertical-align:middle;
 }
-table.orders tr:last-child td{border-bottom:none;}
-table.orders tr.row:hover{background:#FCFAF9;}
+:is(table.orders, table.request-table) tr:last-child td{border-bottom:none;}
+@media (hover: hover) {
+  :is(table.orders, table.request-table) tbody tr:hover{background:var(--color-bg-hover);}
+}
 .ref-cell{
   font-weight:700;
   font-size:12.5px;
@@ -487,7 +489,7 @@ button.danger-outline:hover{border-color:#C0392B;background:#fdf6f5;}
  * supplier form ended up spilling onto a second page. */
 @media print{
   body.printing-record{background:#fff;}
-  body.printing-record .topbar,
+  body.printing-record > :not(#root),
   body.printing-record .admin-wrap > *:not(.record-overlay){display:none !important;}
   body.printing-record .admin-wrap{
     max-width:none;
@@ -520,11 +522,12 @@ button.danger-outline:hover{border-color:#C0392B;background:#fdf6f5;}
    record -- are one click from the table. Opening the order to reach them was
    three clicks for something done on nearly every order. */
 .row-actions{display:flex;gap:6px;flex-wrap:nowrap;justify-content:flex-end;}
-.row-actions button{
+:is(.row-actions button, .request-actions .request-action){
   background:#fff;
-  border:1.5px solid var(--line);
+  border:1px solid var(--color-border-control);
   border-radius:8px;
-  padding:5px 9px;
+  min-height:34px;
+  padding:7px 10px;
   font-family:'Inter',sans-serif;
   font-size:12px;
   font-weight:600;
@@ -533,10 +536,34 @@ button.danger-outline:hover{border-color:#C0392B;background:#fdf6f5;}
   white-space:nowrap;
   transition:border-color .15s ease,background .15s ease,color .15s ease;
 }
-.row-actions button:hover:not([disabled]){
+:is(.row-actions button, .request-actions .request-action):hover:not([disabled]){
   border-color:var(--red);
   color:var(--red);
   background:#fdf6f5;
 }
-.row-actions button[disabled]{opacity:.4;cursor:default;}
+:is(.row-actions button, .request-actions .request-action)[disabled]{opacity:.4;cursor:default;}
 .orders td.actions-cell{text-align:right;white-space:nowrap;}
+
+/* The two dashboards share table density, labels, and filter controls. */
+.request-table strong { display:block; font-size:13.5px; font-weight:600; margin-bottom:2px; }
+.request-secondary { display:block; font-size:12px; font-weight:400; color:var(--ink-soft); line-height:1.5; margin-top:2px; }
+.request-actions { text-align:end; }
+.toolbar input[type=search], .intake-wrap .request-toolbar input[type=search], .intake-wrap .request-toolbar select {
+ min-height:42px; padding:10px 12px; font-size:14px;
+ border:1px solid var(--color-border-control); border-radius:9px;
+ background:var(--paper); color:var(--ink);
+}
+
+/* Shared table feedback: keep existing rows visible during refresh. */
+.table-loading{display:flex;align-items:center;gap:10px;min-height:24px;color:var(--ink-soft);font-size:14px;margin:12px 0;}
+.table-loading::before{content:"";flex:none;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--ink-soft);border-radius:50%;}
+.table-loading-placeholder{min-height:150px;}
+@media(prefers-reduced-motion:no-preference){
+  .table-loading::before{animation:table-loading-spin .8s linear infinite;}
+}
+@keyframes table-loading-spin{to{transform:rotate(360deg);}}
+
+/* Keep document actions readable beside long, already-issued references. */
+.record-actions{flex-wrap:wrap;align-items:center;}
+.record-actions button{flex:0 0 auto;white-space:nowrap;}
+.record-which{flex:1 1 220px;min-width:0;overflow-wrap:anywhere;}

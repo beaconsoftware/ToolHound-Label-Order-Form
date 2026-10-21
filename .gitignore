@@ -6,3 +6,7 @@ playwright-report/
 *.log
 __pycache__/
 *.pyc
+
+supabase/.temp/
+
+supabase/functions/order-requests/bundled.js

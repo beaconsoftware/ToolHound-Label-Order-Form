@@ -3,13 +3,13 @@
  *
  * The publishable ("anon") key is designed to ship in client-side code — it is
  * visible to anyone who views source, and that is fine. What protects the data
- * is row level security on `public.label_orders`: the anon role holds an
- * INSERT-only policy and no SELECT policy, so this key can file an order but
- * cannot read anybody's order back. Never put the service_role key here.
+ * is database permissions and row level security on `public.label_orders`.
+ * Anonymous direct inserts are revoked; submissions use the token-validated
+ * order-requests Edge Function. Never put the service_role key here.
  *
  * See supabase/migrations/ for the policies and constraints this relies on.
  */
-window.TOOLHOUND_CONFIG = {
+(typeof window !== 'undefined' ? window : globalThis).TOOLHOUND_CONFIG = {
   supabaseUrl: 'https://ayqcteloqdrlemehozzk.supabase.co',
   supabaseAnonKey: 'sb_publishable_DpVxcMatuMmcyqF0B774AQ_y8EuFlp1',
 

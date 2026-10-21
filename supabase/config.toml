@@ -6,3 +6,8 @@
 # see supabase/functions/notify-sales/index.ts.
 [functions.notify-sales]
 verify_jwt = false
+
+# Public token operations and staff JWT operations authenticate inside the handler.
+[functions.order-requests]
+verify_jwt = false
+entrypoint = "./functions/order-requests/bundled.js"

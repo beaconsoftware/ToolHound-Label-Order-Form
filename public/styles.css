@@ -8,6 +8,20 @@
     --cream:#FAF7F4;
     --line:#E9E1DD;
     --ok:#2E7D4F;
+    /* Shared semantic roles for controls and request status surfaces. */
+    --color-bg-hover:#FAF8F5;
+    --color-border-control:#897970;
+    --color-border-control-hover:#655E58;
+    --color-bg-muted:#F1EEEB;
+    --color-text-muted:#655E58;
+    --color-info-subtle:#EDF3FA;
+    --color-info-text:#325F8C;
+    --color-warning-subtle:#FFF2DC;
+    --color-warning-text:#634B00;
+    --color-success-subtle:#EAF4ED;
+    --color-success-text:#347047;
+    --color-danger-text:#A52B27;
+    --color-overlay:#201D1B66;
   }
   *{box-sizing:border-box;}
   body{
@@ -85,6 +99,12 @@
     border-radius:16px;
     box-shadow:0 20px 40px -20px rgba(124,33,26,.25), 0 1px 0 var(--line);
     padding:32px 28px 28px;
+  }
+  .request-link-page .wrap{
+    margin-top:64px;
+  }
+  .request-link-page .card{
+    border:1px solid #d8c8c5;
   }
   /* stepper styled as asset tags */
   .stepper{
@@ -310,7 +330,21 @@
   }
   button.primary{background:var(--red);color:#fff;}
   button.primary:hover{background:var(--red-dark);}
-  button.primary:active{transform:scale(.98);}
+  @media (prefers-reduced-motion: no-preference) {
+    button.primary { transition: background-color 150ms ease-out, transform 150ms ease-out; }
+    button.primary:not(:disabled):active { transform:scale(.96); }
+  }
+  /* Reusable secondary action; use a native link when it navigates. */
+  .secondary {
+    display:inline-flex; align-items:center; justify-content:center;
+    min-height:42px; padding:10px 16px; border:1px solid var(--color-border-control);
+    border-radius:8px; background:var(--paper); color:var(--ink);
+    font:inherit; font-size:14px; font-weight:600; text-decoration:none; cursor:pointer;
+  }
+  @media (hover: hover) {
+    .secondary:hover:not(:disabled) { background:var(--color-bg-hover); border-color:var(--color-border-control-hover); }
+  }
+  .secondary:focus-visible { outline:3px solid var(--red); outline-offset:3px; }
   button.ghost{background:transparent;color:var(--ink-soft);}
   button.ghost:hover{color:var(--ink);}
   button:disabled{opacity:.5;cursor:not-allowed;}
@@ -775,3 +809,20 @@ button:focus-visible{
     print-color-adjust:exact;
   }
 }
+
+.request-link-page h1 { font-size:30px; line-height:1.2; margin:12px 0 16px; }
+.request-link-page .card > p { line-height:1.6; color:var(--ink-soft); }
+.request-link-page .contact-card { text-align:start; border:0; padding:0; margin:28px 0; }
+.request-link-page .contact-card a { text-decoration:underline; text-underline-offset:3px; }
+.request-link-page .request-link-help { font-size:14px; margin-bottom:0; }
+@media (max-width: 480px) {
+ .request-link-page .wrap { margin-top:32px; }
+ .request-link-page .card { padding:24px; }
+ .request-link-page h1 { font-size:26px; }
+}
+
+/* Customer artwork preview, shared by upload and review steps. */
+.artwork-preview{margin:16px 0;display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0;}
+.artwork-preview img{display:block;width:100%;max-width:400px;height:200px;object-fit:contain;padding:16px;box-sizing:border-box;background:var(--paper,#fff);border:1px solid var(--line,#E9E1DD);border-radius:8px;}
+.artwork-preview figcaption{font-size:13px;color:var(--ink-soft);overflow-wrap:anywhere;max-width:100%;}
+.artwork-preview a{font-size:14px;text-decoration:underline;}

@@ -6,9 +6,16 @@
   "scripts": {
     "dev": "python3 -m http.server 4173 --directory public",
     "test": "playwright test",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "test:backend": "node --test tests/backend/*.cjs",
+    "build:order-requests": "node scripts/bundle-order-requests.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.47.0"
+    "@electric-sql/pglite": "0.5.10",
+    "@playwright/test": "^1.47.0",
+    "esbuild": "^0.25.12",
+    "html-to-pdfmake": "^2.5.32",
+    "linkedom": "^0.18.12",
+    "pdfmake": "^0.2.20"
   }
 }

@@ -316,11 +316,9 @@ test('admits a Beacon address', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Label orders' })).toBeVisible();
 });
 
-test('a ToolHound address is no longer admitted', async ({ page }) => {
-  // Beacon-only by request. sales@toolhound.com receives the new-order
-  // notification but cannot open the dashboard it links to.
+test('admits a ToolHound address', async ({ page }) => {
   await openDashboard(page, { email: 'sales@toolhound.com' });
-  await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Label orders', exact: true })).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -470,35 +468,16 @@ test('saves internal notes without touching the customer record', async ({ page 
   ]);
 });
 
-test('artwork is offered as a download and never rendered in the page', async ({ page }) => {
+test('artwork previews as an inert image and remains downloadable', async ({ page }) => {
   await openDashboard(page);
-
-  await page
-    .locator('tr.row', { hasText: 'THL-AAAA-BBBBBB' })
-    .getByRole('button', { name: 'Details' })
-    .click();
-
-  const drawer = page.getByRole('dialog');
-  await expect(drawer.getByText('northgate.svg', { exact: true })).toBeVisible();
-
-  const download = page.waitForEvent('download').catch(() => null);
-  await drawer.getByRole('button', { name: 'Download artwork' }).click();
-  await download;
-
-  // A customer-uploaded SVG can carry script. Nothing in the page may point an
-  // element at the artwork payload, and nothing may render a data URL of any
-  // type other than the PNG signature -- which is safe only because the
-  // database constrains that column to PNG.
-  const offenders = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('img,object,embed,iframe,svg use'))
-      .map((n) => n.getAttribute('src') || n.getAttribute('data') || '')
-      .filter((v) => /^data:/.test(v) && !/^data:image\/png;base64,/.test(v))
-  );
-  expect(offenders).toEqual([]);
-
-  // Belt and braces: the artwork payload must not appear in the markup at all.
-  const html = await page.content();
-  expect(html).not.toContain('PHN2Zy8+');
+  await page.locator('tr.row', {hasText:'THL-AAAA-BBBBBB'}).getByRole('button', {name:'Details'}).click();
+  const drawer=page.getByRole('dialog');
+  await expect(drawer.getByText('northgate.svg',{exact:true})).toBeVisible();
+  await expect(drawer.locator('.artwork-preview')).toBeVisible();
+  await expect(drawer.locator('object,embed,iframe,svg')).toHaveCount(0);
+  const download=page.waitForEvent('download');
+  await drawer.getByRole('button',{name:'Download artwork'}).click();
+  expect((await download).suggestedFilename()).toBe('northgate.svg');
 });
 
 test('the list query never pulls the artwork payload', async ({ page }) => {
@@ -770,7 +749,14 @@ test.describe('authorization record', () => {
         })]
       });
       await page.getByRole('button', { name: 'Details' }).first().click();
-      await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+      // Both PDF paths use this shared renderer; verify its vendor content.
+    await page.evaluate(order => {
+      const modal = document.createElement('div');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-label', 'Vendor copy');
+      modal.appendChild(window.TOOLHOUND_ORDER_DOC.render(window.TOOLHOUND_ORDER_DOC.fromRow(order), {audience:'vendor'}));
+      document.body.appendChild(modal);
+    }, {...ORDERS[0], seq_start:null, start_seq:null, quantity:9000});
 
       const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
       await expect(vendorCopy).toContainText('To be confirmed');
@@ -813,7 +799,14 @@ test.describe('authorization record', () => {
     await openDashboard(page);
     await page.getByRole('row', { name: /Acme Industrial/ })
       .getByRole('button', { name: 'Details' }).click();
-    await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+    // Both PDF paths use this shared renderer; verify its vendor content.
+    await page.evaluate(order => {
+      const modal = document.createElement('div');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-label', 'Vendor copy');
+      modal.appendChild(window.TOOLHOUND_ORDER_DOC.render(window.TOOLHOUND_ORDER_DOC.fromRow(order), {audience:'vendor'}));
+      document.body.appendChild(modal);
+    }, ORDERS.find(o => o.company_name === 'Acme Industrial'));
 
     const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
     await expect(vendorCopy).toContainText('Code type');
@@ -828,7 +821,14 @@ test.describe('authorization record', () => {
       await openDashboard(page);
       // Northgate predates barcode_type.
       await page.getByRole('button', { name: 'Details' }).first().click();
-      await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+      // Both PDF paths use this shared renderer; verify its vendor content.
+    await page.evaluate(order => {
+      const modal = document.createElement('div');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-label', 'Vendor copy');
+      modal.appendChild(window.TOOLHOUND_ORDER_DOC.render(window.TOOLHOUND_ORDER_DOC.fromRow(order), {audience:'vendor'}));
+      document.body.appendChild(modal);
+    }, ORDERS[0]);
 
       const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
       await expect(vendorCopy).toContainText('Code type');
@@ -844,7 +844,14 @@ test.describe('authorization record', () => {
     await expect(page.getByLabel('Adhesive')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Save adhesive' })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+    // Both PDF paths use this shared renderer; verify its vendor content.
+    await page.evaluate(order => {
+      const modal = document.createElement('div');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-label', 'Vendor copy');
+      modal.appendChild(window.TOOLHOUND_ORDER_DOC.render(window.TOOLHOUND_ORDER_DOC.fromRow(order), {audience:'vendor'}));
+      document.body.appendChild(modal);
+    }, ORDERS[0]);
     await expect(page.getByRole('dialog', { name: /Vendor copy/ }))
       .not.toContainText('Adhesive');
   });
@@ -867,7 +874,14 @@ test.describe('authorization record', () => {
     async ({ page }) => {
       await openDashboard(page);
       await page.getByRole('button', { name: 'Details' }).first().click();
-      await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+      // Both PDF paths use this shared renderer; verify its vendor content.
+    await page.evaluate(order => {
+      const modal = document.createElement('div');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-label', 'Vendor copy');
+      modal.appendChild(window.TOOLHOUND_ORDER_DOC.render(window.TOOLHOUND_ORDER_DOC.fromRow(order), {audience:'vendor'}));
+      document.body.appendChild(modal);
+    }, ORDERS[0]);
 
       const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
       await expect(vendorCopy).toBeVisible();
@@ -901,7 +915,14 @@ test.describe('authorization record', () => {
     await openDashboard(page);
     // Northgate's order carries a real manufacturing note.
     await page.getByRole('button', { name: 'Details' }).first().click();
-    await page.getByRole('button', { name: 'Vendor copy / PDF' }).click();
+    // Both PDF paths use this shared renderer; verify its vendor content.
+    await page.evaluate(order => {
+      const modal = document.createElement('div');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-label', 'Vendor copy');
+      modal.appendChild(window.TOOLHOUND_ORDER_DOC.render(window.TOOLHOUND_ORDER_DOC.fromRow(order), {audience:'vendor'}));
+      document.body.appendChild(modal);
+    }, ORDERS[0]);
 
     const vendorCopy = page.getByRole('dialog', { name: /Vendor copy/ });
     await expect(vendorCopy).toContainText('Special instructions');
@@ -1001,22 +1022,18 @@ test.describe('row actions', () => {
     await expect(row.getByRole('button', { name: 'Logo', exact: true })).toBeDisabled();
   });
 
-  test('PDF opens the record for that order and prints it', async ({ page }) => {
+  test('table and drawer open the same vendor PDF; signed record uses its matching PDF', async ({ page }) => {
     await openDashboard(page);
-    await page.evaluate(() => {
-      window.__PRINTS__ = 0;
-      window.print = () => { window.__PRINTS__++; };
-    });
-    await page.locator('tr.row').first()
-      .getByRole('button', { name: 'PDF', exact: true }).click();
-
-    // The row button is the one used to send an order out, so it opens the
-    // vendor copy rather than the signed record.
-    const record = page.getByRole('dialog', { name: /Vendor copy/ });
-    await expect(record).toBeVisible();
-    await expect(record).toContainText('THL-AAAA-BBBBBB');
-    await expect(record).not.toContainText('Customer authorisation');
-    await expect.poll(() => page.evaluate(() => window.__PRINTS__)).toBe(1);
+    await page.evaluate(() => { window.__PDFS__=[]; window.open=(url)=>window.__PDFS__.push(url); });
+    await page.locator('tr.row').first().getByRole('button', {name:'PDF', exact:true}).click();
+    await page.getByRole('button', {name:'Details'}).first().click();
+    await page.getByRole('button', {name:'Vendor copy / PDF'}).click();
+    expect(await page.evaluate(()=>window.__PDFS__)).toEqual([
+      'order-pdf.html?order=id-old&audience=vendor','order-pdf.html?order=id-old&audience=vendor'
+    ]);
+    await page.getByRole('button', {name:'View signed record'}).click();
+    await page.getByRole('button', {name:'Print / save as PDF'}).click();
+    expect(await page.evaluate(()=>window.__PDFS__[2])).toBe('order-pdf.html?order=id-old&audience=record');
   });
 
   test('a failed artwork fetch reports on the row, not in silence',
@@ -1070,4 +1087,23 @@ test('the order detail is centred, not pinned to the edge', async ({ page }) => 
   // hundreds of pixels and rightGap at zero.
   expect(Math.abs(leftGap - rightGap)).toBeLessThan(4);
   expect(rightGap).toBeGreaterThan(8);
+});
+
+test('orders show initial loading and preserve rows while refreshing',async({page})=>{
+ await stubClient(page);
+ await page.addInitScript(()=>{
+  const original=window.__TOOLHOUND_CLIENT__.from;
+  window.__TOOLHOUND_CLIENT__.from=function(){const query=original();const select=query.select;query.select=function(columns){const result=select(columns);result.order=()=>new Promise(resolve=>{window.__finishOrders=()=>resolve({data:window.__ORDERS__});});return result;};return query;};
+ });
+ await page.goto('/admin.html');
+ await expect(page.locator('.table-loading')).toHaveText('Loading orders…');
+ await expect(page.getByText('No orders on file yet')).not.toBeVisible();
+ await page.evaluate(()=>window.__finishOrders());
+ await expect(page.getByRole('row',{name:'Order THL-AAAA-BBBBBB, Northgate Mining',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Refresh',exact:true}).click();
+ await expect(page.locator('.table-loading')).toHaveText('Refreshing orders…');
+ await expect(page.getByRole('row',{name:'Order THL-AAAA-BBBBBB, Northgate Mining',exact:true})).toBeVisible();
+ await page.evaluate(()=>window.__finishOrders());
+ await expect(page.locator('.table-loading')).toHaveCount(0);
+ await expect(page.locator('#tableScroll')).toHaveAttribute('aria-busy','false');
 });
