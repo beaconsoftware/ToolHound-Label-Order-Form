@@ -1153,7 +1153,7 @@ test('rate limited auth requests have an actionable cooldown', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeEnabled();
 });
 
-test('auth card fits a narrow screen and preserves the preparation return URL', async ({ page }) => {
+test('auth card fits a narrow screen and returns preparation sign-in to admin', async ({ page }) => {
   await stubClient(page, { email: null });
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/admin.html?view=prepare');
@@ -1162,6 +1162,6 @@ test('auth card fits a narrow screen and preserves the preparation return URL', 
   await page.getByLabel('Work email').fill('ian.wilson@beaconsoftware.com');
   await page.getByRole('button', { name: 'Send sign-in link' }).click();
   await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
-  expect(await page.evaluate(() => window.__AUTH_CALLS__.otp[0].options.emailRedirectTo)).toContain('/prepare-order.html');
+  expect(await page.evaluate(() => window.__AUTH_CALLS__.otp[0].options.emailRedirectTo)).toBe('http://127.0.0.1:4173/admin.html');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

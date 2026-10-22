@@ -286,7 +286,7 @@ supabase secrets set RESEND_API_KEY=re_...
 supabase secrets set NOTIFY_WEBHOOK_SECRET="$(openssl rand -hex 32)"
 supabase secrets set NOTIFY_TO=graham.cooper@toolhound.com
 supabase secrets set NOTIFY_FROM='ToolHound Orders <orders@toolhound.com>'
-supabase secrets set DASHBOARD_URL=https://tool-hound-label-order-form.vercel.app/admin
+supabase secrets set DASHBOARD_URL=https://order.toolhound.com/admin
 ```
 
 `NOTIFY_FROM` has to be on a domain verified in Resend, or Resend rejects the
@@ -451,7 +451,7 @@ The local migration and function are not automatically deployed by Vercel.
    whenever those change. Its own authentication handles staff JWTs and customer
    bearer links, so platform `verify_jwt` is false (see `supabase/config.toml`).
 2. Configure server-side Edge Function secrets:
-   - `ORDER_APP_URL`: canonical production website origin, without trailing slash.
+   - `ORDER_APP_URL=https://order.toolhound.com`: canonical production website origin, without trailing slash.
      Fallback for customer links created without an Origin header and legacy requests.
      Linear integration links also use this URL.
    - `ORDER_ALLOWED_ORIGINS`: comma-separated additional exact browser origins,
@@ -572,3 +572,11 @@ and reconcile the same comment ID. No document or job tables are added.
 New order references use the original `THL-<base36 timestamp>-<six random characters>`
 format, generated on the server. Repeated submissions return the stored reference;
 already-issued references remain unchanged.
+
+### Production authentication URLs
+
+The production site is https://order.toolhound.com. Supabase Auth Site URL is
+https://order.toolhound.com/admin. Allow that exact callback (and /admin.html for
+existing bookmarks); sign-in always returns to admin. Local development uses
+/admin.html on localhost or 127.0.0.1, ports 4173 and 4175, with those exact
+callbacks also allowed. Old Vercel callbacks have been removed.
