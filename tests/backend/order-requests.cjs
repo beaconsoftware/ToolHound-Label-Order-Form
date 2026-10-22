@@ -212,3 +212,13 @@ test('request creation persists origin atomically and retries cannot change it',
  await db.query('select public.create_order_request($1,$2,null)',[JSON.stringify({...request,app_origin:'https://production.example'}),JSON.stringify(quote)]);
  assert.equal((await db.query('select app_origin from public.order_requests where id=$1',[id])).rows[0].app_origin,'http://localhost:4175');
 });
+
+test('previous reference PDF is atomic and cannot be replaced by a retried creation',async()=>{
+ const id='20000000-0000-4000-8000-000000000086';
+ const request={id,created_by:staff,mode:'shadow',company_name:'Test',contact_name:'Test',contact_email:'test@example.com',barcode_type:'linear',token_hash:'previous-test',previous_order_name:'old.pdf',previous_order_data:'JVBERi0xLjQ='};
+ const quote={name:'test.pdf',sha256:'hash',data_base64:'JVBERi0xLjQ='};
+ await db.query('select public.create_order_request($1,$2,null)',[JSON.stringify(request),JSON.stringify(quote)]);
+ await db.query('select public.create_order_request($1,$2,null)',[JSON.stringify({...request,previous_order_name:'replacement.pdf'}),JSON.stringify(quote)]);
+ assert.deepEqual((await db.query('select previous_order_name,previous_order_data from public.order_requests where id=$1',[id])).rows[0],{previous_order_name:'old.pdf',previous_order_data:'JVBERi0xLjQ='});
+ await assert.rejects(()=>db.query('update public.order_requests set previous_order_data=null where id=$1',[id]),/previous_order_pdf_pair/);
+});

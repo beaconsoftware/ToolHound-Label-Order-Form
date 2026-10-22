@@ -31,7 +31,7 @@ function description(r: any, external: any) {
     '### MetalCraft Quote\n\nNot provided',
     '### Customer PO\n\nNot provided',
     '### Customer logo\n\nNot provided',
-    '### Other\n\nNot provided',
+    r.previous_order_name ? `### Previous order (reference only)\n\n[Previous order PDF](${external.metadata.previous_order_asset_url})` : '### Other\n\nNot provided',
     `### Intake details\n\nContact: ${r.contact_name} <${r.contact_email}>`,
     `Code type: ${r.barcode_type}`,
     `Request: ${r.id}\n\nQuote version: ${r.quote_version} · SHA-256: ${r.quote_sha256}`,
@@ -59,6 +59,18 @@ async function create(r: any, external: any) {
       const put = await fetch(file.uploadUrl, { method: 'PUT', headers, body: bytes, signal: AbortSignal.timeout(30000) });
       if (!put.ok) throw new Error('Quote upload failed. The customer link is still usable; retry the sync.');
       external.metadata.quote_asset_url = file.assetUrl;
+      checked(await db.from('order_requests').update({ external_metadata: external.metadata }).eq('id', external.id));
+    }
+    if (r.previous_order_data && !external.metadata.previous_order_asset_url) {
+      const bytes = Uint8Array.from(atob(r.previous_order_data), c => c.charCodeAt(0));
+      const uploaded = await linear('mutation($name: String!, $size: Int!) { fileUpload(contentType: "application/pdf", filename: $name, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } } }', { name: r.previous_order_name, size: bytes.length });
+      const file = uploaded.fileUpload.uploadFile;
+      if (!uploaded.fileUpload.success || !file) throw new Error('Previous order upload could not be prepared.');
+      const headers = new Headers({ 'Content-Type': 'application/pdf' });
+      file.headers.forEach((h: any) => headers.set(h.key, h.value));
+      const put = await fetch(file.uploadUrl, { method: 'PUT', headers, body: bytes, signal: AbortSignal.timeout(30000) });
+      if (!put.ok) throw new Error('Previous order upload failed. Retry sync.');
+      external.metadata.previous_order_asset_url = file.assetUrl;
       checked(await db.from('order_requests').update({ external_metadata: external.metadata }).eq('id', external.id));
     }
     const created = await linear('mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url } } }', {

@@ -2,13 +2,15 @@
   'use strict';
   var status = document.getElementById('quote-status');
   try {
+    var previous = new URLSearchParams(location.search).get('document') === 'previous_order';
+    if (previous) { document.querySelector('h1').textContent = 'Previous order PDF'; status.textContent = 'Opening the previous order…'; }
     var id = new URLSearchParams(location.search).get('request');
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id || '')) throw new Error('Invalid quote link. Open the quote from the request table.');
     var cfg = window.TOOLHOUND_CONFIG || {};
     var client = window.__TOOLHOUND_CLIENT__ || window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
     var session = await client.auth.getSession();
     if (!session.data.session) throw new Error('Sign in to admin in this browser, then reload this quote.');
-    var result = await client.functions.invoke('order-requests', { body: { action: 'quote', id: id } });
+    var result = await client.functions.invoke('order-requests', { body: { action: previous ? 'previous_order' : 'quote', id: id } });
     if (result.error) {
       var detail;
       try { detail = await result.error.context.json(); } catch (_) {}

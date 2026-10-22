@@ -46,8 +46,10 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
     [['','Choose a label form'],['linear','Linear barcode labels'],['qr','QR code labels']].forEach(function (o) { type.appendChild(el('option', { value: o[0] }, o[1])); });
     typeBox.appendChild(type); grid.appendChild(typeBox);
     var quote = field(grid, 'Completed quote PDF *', 'quote', 'file', true); quote.accept = 'application/pdf,.pdf';
+    var previous = field(grid, 'Previous order PDF (optional)', 'previous-order', 'file'); previous.accept = 'application/pdf,.pdf';
+    previous.parentNode.appendChild(el('p', { class: 'hint' }, 'Internal reference only. Does not prefill the customer form.'));
     form.appendChild(grid);
-    form.appendChild(el('p', { class: 'hint' }, 'PDF up to 10 MB. The quote is saved as version 1 of this request. Send the quote and customer link yourself after reviewing them.'));
+    form.appendChild(el('p', { class: 'hint' }, 'Each PDF up to 10 MB. The quote is saved as version 1 of this request. Send the quote and customer link yourself after reviewing them.'));
     var button = el('button', { type: 'submit', class: 'primary' }, 'Prepare customer link'); form.appendChild(button);
     var feedback = el('div', { class: 'intake-message', role: 'status', hidden: '' }); form.appendChild(feedback);
     var resultBox = el('div');
@@ -55,6 +57,8 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
       e.preventDefault(); if (busy) return;
       var file = quote.files[0];
       if (!file || file.size > 10 * 1024 * 1024) { notice(feedback, 'Choose a completed quote PDF up to 10 MB.'); return; }
+      var previousFile = previous.files[0];
+      if (previousFile && previousFile.size > 10 * 1024 * 1024) { notice(feedback, 'Choose a previous order PDF up to 10 MB.'); return; }
       busy = true; button.disabled = true;
       // Persist before the first network operation; uncertain results never get
       // a fresh ID. Recover the saved request before starting another one.
@@ -62,8 +66,9 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
       notice(feedback, 'Saving the quote and preparing the request…');
       try {
         var base64 = await new Promise(function (resolve, reject) { var reader = new FileReader(); reader.onload = function () { resolve(reader.result.split(',')[1]); }; reader.onerror = reject; reader.readAsDataURL(file); });
+        var previousData = previousFile ? await new Promise(function (resolve, reject) { var reader = new FileReader(); reader.onload = function () { resolve(reader.result.split(',')[1]); }; reader.onerror = reject; reader.readAsDataURL(previousFile); }) : null;
         var saved = await api({ action: 'create', id: pendingId, company_name: company.value, contact_name: contact.value,
-          contact_email: email.value, salesforce_url: crm.value, barcode_type: type.value, quote_name: file.name, quote_data: base64 });
+          contact_email: email.value, salesforce_url: crm.value, barcode_type: type.value, quote_name: file.name, quote_data: base64, previous_order_name: previousFile ? previousFile.name : null, previous_order_data: previousData });
         updateRequest(saved); showLink(resultBox, saved);
         notice(feedback, 'Request saved. Review the company, quote and link below before sending.');
         sessionStorage.removeItem('toolhound-intake-pending'); pendingId = null;
@@ -162,6 +167,7 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
         customer.appendChild(el('span', { class: 'request-secondary' }, r.contact_email));
         item.appendChild(customer);
         var quote = el('td'); quote.appendChild(el('a', { class: 'request-quote', title: 'Open ' + r.quote_name, href: '/quote.html?request=' + encodeURIComponent(r.id), target: '_blank', rel: 'noopener' }, r.quote_name));
+        if (r.previous_order_name) quote.appendChild(el('p')).appendChild(el('a', { href: '/quote.html?document=previous_order&request=' + encodeURIComponent(r.id), target: '_blank', rel: 'noopener' }, 'Previous order: ' + r.previous_order_name));
         quote.appendChild(el('span', { class: 'request-secondary' }, (r.barcode_type === 'qr' ? 'QR code' : 'Linear barcode') + ' · v' + r.quote_version));
         (r.integrations || []).forEach(function (integration) {
           if (integration.url) quote.appendChild(el('a', { href: integration.url, target: '_blank', rel: 'noopener', class: 'request-ticket' }, integration.identifier || integration.provider));
