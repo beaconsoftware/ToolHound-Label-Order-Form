@@ -68,3 +68,7 @@ Reference guidance: [Supabase production checklist](https://supabase.com/docs/gu
 ## Environment-aware customer links — October 21 follow-up
 
 Deployed order-requests version 25 and applied order_request_app_origin. New requests persist the validated browser Origin in app_origin; recovery and regeneration retain it. ORDER_APP_URL is now https://tool-hound-label-order-form.vercel.app, used for legacy/no-Origin requests and internal Linear links. Explicit additional origins are localhost and 127.0.0.1 on ports 4173 and 4175. The local-only button was removed. Production/local live preflights pass; an untrusted origin returns 403 and an invalid staff bearer is denied. All 36 backend tests pass, including persistence, cross-origin recovery/regeneration, idempotency and missing-Origin fallback. The separate security_review_hardening SQL migration remains unapplied; other audit findings remain open.
+
+## Custom domain follow-up — October 22
+
+ORDER_APP_URL now uses https://order.toolhound.com and DASHBOARD_URL uses its /admin page. Supabase Auth Site URL is https://order.toolhound.com/admin; exact production/local callbacks replace the old Vercel allowlist. The one persisted Vercel app_origin was changed to the custom domain without changing its token. Production and local backend preflights pass; the old Vercel origin is rejected. The frontend now explicitly returns sign-in to admin, including sign-in started from preparation. Previously sent emails and Linear descriptions are not retroactively rewritten.

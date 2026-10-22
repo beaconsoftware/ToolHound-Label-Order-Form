@@ -827,7 +827,8 @@
       form.setAttribute('aria-busy', 'true'); updateButton();
       try {
         var res = await client.auth.signInWithOtp({ email: email,
-          options: { emailRedirectTo: window.location.origin + window.location.pathname + window.location.search } });
+          options: { emailRedirectTo: (['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
+            ? window.location.origin + '/admin.html' : 'https://order.toolhound.com/admin') } });
         if (res && res.error) throw res.error;
         var wasSent = !!sentEmail;
         sentEmail = email; field.hidden = true; change.hidden = false;
