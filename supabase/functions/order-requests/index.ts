@@ -57,7 +57,7 @@ function scheduleSync(id: string) { background(runIntegrations(id)); }
 function scheduleBatch(ids: string[]) { background((async () => { for (const id of ids) await runIntegrations(id); })()); }
 function summary(r: any) {
   return { id: r.id, company_name: r.company_name, contact_name: r.contact_name, contact_email: r.contact_email,
-    barcode_type: r.barcode_type, quote_name: r.quote_name, quote_version: r.quote_version, created_at: r.created_at,
+    barcode_type: r.barcode_type, quote_name: r.quote_name, quote_version: r.quote_version, previous_order_name: r.previous_order_name, created_at: r.created_at,
     mode: r.mode, request_state: r.request_state, integrations: r.integrations,
     sent_at: r.sent_at, sent_recipient: r.sent_recipient, submitted_at: r.submitted_at, revoked_at: r.revoked_at,
     sync_pending: (r.integrations || []).some((e: any) => e.pending), expires_at: r.expires_at, token_version: r.token_version, regenerated_at: r.regenerated_at, order_ref: r.order_ref };
@@ -74,8 +74,8 @@ function text(value: unknown, max = 200) {
   return value.trim();
 }
 // Bound bytes while streaming, including chunked requests without Content-Length.
-// 10 MB quote PDFs encode to ~14 MB; ordinary customer submissions are smaller.
-const MAX_REQUEST_BYTES = 14_500_000;
+// Two 10 MB PDFs encode to ~28 MB; ordinary customer submissions are smaller.
+const MAX_REQUEST_BYTES = 28_500_000;
 async function readJson(req: Request) {
   if (Number(req.headers.get('content-length')) > MAX_REQUEST_BYTES) throw new Error('Request is too large.');
   const reader = req.body?.getReader();
@@ -145,6 +145,12 @@ async function handle(req: Request, appOrigin: string) {
     for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
     return { pdf_data: btoa(binary), pdf_name: order.order_ref + '-' + body.audience + '.pdf' };
   }
+  if (body.action === 'previous_order') {
+    if (!uuid.test(body.id || '')) throw new Error('Invalid request ID.');
+    const doc = checked(await db.from('order_requests').select('previous_order_name,previous_order_data').eq('id', body.id).maybeSingle());
+    if (!doc?.previous_order_data) throw new Error('No previous order PDF is attached.');
+    return { quote_name: doc.previous_order_name, quote_data: doc.previous_order_data };
+  }
   if (body.action === 'quote') {
     if (!uuid.test(body.id || '')) throw new Error('Invalid request ID.');
     const quote = checked(await db.from('order_requests').select('quote_name,quote_data').eq('id', body.id).maybeSingle());
@@ -152,7 +158,7 @@ async function handle(req: Request, appOrigin: string) {
     return { quote_name: quote.quote_name, quote_data: quote.quote_data };
   }
   if (body.action === 'list') {
-    const rows = checked(await db.from('order_requests').select('id,company_name,contact_name,contact_email,barcode_type,quote_name,quote_version,created_at,mode,request_state,sent_at,sent_recipient,shadow_receipt,expires_at,revoked_at,token_version,regenerated_at,external_provider,external_identifier,external_url,external_sync,' + receiptJoin).order('created_at', { ascending: false }).limit(250));
+    const rows = checked(await db.from('order_requests').select('id,company_name,contact_name,contact_email,barcode_type,quote_name,quote_version,previous_order_name,created_at,mode,request_state,sent_at,sent_recipient,shadow_receipt,expires_at,revoked_at,token_version,regenerated_at,external_provider,external_identifier,external_url,external_sync,' + receiptJoin).order('created_at', { ascending: false }).limit(250));
     // Revisit durable pending jobs while the dashboard is active. Backoff and leases are enforced in SQL.
     scheduleBatch(rows.filter((row: any) => Object.values(row.external_sync || {}).some((j: any) => j.provider === row.external_provider && j.status !== 'succeeded')).slice(0, 3).map((row: any) => row.id));
     return { requests: rows.map((row: any) => summary(withReceipt(row))) };
@@ -167,6 +173,15 @@ async function handle(req: Request, appOrigin: string) {
     let bytes: Uint8Array<ArrayBuffer>;
     try { bytes = Uint8Array.from(atob(body.quote_data), c => c.charCodeAt(0)); } catch { throw new Error('Invalid quote PDF.'); }
     if (bytes.length > 10 * 1024 * 1024 || new TextDecoder().decode(bytes.slice(0,5)) !== '%PDF-') throw new Error('Upload a valid completed quote PDF smaller than 10 MB.');
+    let previousName = null, previousData = null;
+    if (body.previous_order_name != null || body.previous_order_data != null) {
+      previousName = text(body.previous_order_name);
+      if (typeof body.previous_order_data !== 'string' || body.previous_order_data.length > 14000000) throw new Error('Previous order must be a PDF up to 10 MB.');
+      let previousBytes;
+      try { previousBytes = Uint8Array.from(atob(body.previous_order_data), c => c.charCodeAt(0)); } catch { throw new Error('Invalid previous order PDF.'); }
+      if (previousBytes.length > 10 * 1024 * 1024 || new TextDecoder().decode(previousBytes.slice(0,5)) !== '%PDF-') throw new Error('Previous order must be a PDF up to 10 MB.');
+      previousData = body.previous_order_data;
+    }
     let crm = null;
     if (body.salesforce_url) {
       crm = text(body.salesforce_url, 2000);
@@ -176,6 +191,7 @@ async function handle(req: Request, appOrigin: string) {
     const customerToken = await token(body.id);
     const values = { id: body.id, created_by: user.id, mode: env('ORDER_REQUESTS_MODE') === 'live' ? 'live' : 'shadow',
       company_name: company, contact_name: contact, contact_email: contactEmail, crm_url: crm,
+      previous_order_name: previousName, previous_order_data: previousData,
       barcode_type: body.barcode_type, app_origin: appOrigin, token_hash: await hash(customerToken) };
     const inserted = await db.rpc('create_order_request', { p_request: values, p_provider: integrationProvider(env), p_quote: { name: quoteName, data_base64: body.quote_data, sha256: hex(await crypto.subtle.digest('SHA-256', bytes)) } });
     if (inserted.error && inserted.error.code !== '23505') checked(inserted);

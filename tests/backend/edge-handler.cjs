@@ -72,6 +72,7 @@ function runtime(options = {}) {
    assert.match(variables.input.description,/### Label Order Form\n\nAwaiting customer submission/);
    assert.match(variables.input.description,/### Billing Email\n\nAwaiting customer confirmation/);
    assert.equal(variables.input.teamId,'team'); assert.match(variables.input.description,/Completed quote PDF/);
+   if (options.previous) assert.match(variables.input.description,/Previous order PDF/);
    issues.set(issue.id,issue);
    if(lose){lose=false;throw new Error('Connection lost after Linear committed');}
    return Response.json({data:{issueCreate:{success:true,issue}}});
@@ -153,7 +154,7 @@ test('order PDF requires staff and returns the exact attached artifact or shared
 test('every staff action uses database authorization and fails closed',async()=>{
  for(const options of [{email:'other@toolhound.com'},{email:'staff@beaconsoftware.com',denied:true},{authRpcError:{message:'Unavailable'}}]) {
   const r=runtime(options);
-  for(const action of ['create','list','quote','order_pdf','recover','regenerate','revoke','mark_sent','sync']) {
+  for(const action of ['create','list','quote','previous_order','order_pdf','recover','regenerate','revoke','mark_sent','sync']) {
    const res=await r.call({...payload,action}); assert.equal(res.status,400); assert.equal(r.events.length,0);
   }
  }
@@ -164,7 +165,7 @@ test('oversized streaming bodies, declared sizes, and non-object JSON are reject
  const r=runtime({mode:'shadow'});
  for(const body of [null,[],true]) assert.equal((await r.call(body)).status,400);
  assert.equal((await r.call({...payload,quote_data:'a'.repeat(14_500_001)})).status,400);
- assert.equal((await r.call(payload,'staff',{'content-length':'14500001'})).status,400);
+ assert.equal((await r.call(payload,'staff',{'content-length':'28500001'})).status,400);
  assert.equal(r.rows.size,0);assert.equal(r.events.length,0);
 });
 
@@ -197,4 +198,31 @@ test('missing Origin uses canonical URL; legacy requests ignore the recovering b
  delete r.rows.get(id).app_origin;
  const recovered=await r.call({action:'recover',id},'staff',{origin:'http://localhost:4175'});
  assert.match(recovered.data.customer_url,/^https:\/\/orders.example\//);
+});
+
+test('optional previous PDF is private, saved once, and uploaded to Linear',async()=>{
+ const r=runtime({previous:true});
+ const input={...payload,previous_order_name:'previous.pdf',previous_order_data:payload.quote_data};
+ const created=await r.call(input);assert.equal(created.status,200);await r.flush();
+ assert.equal(r.events.filter(url=>url==='https://upload.example').length,2);
+ assert.equal(r.issues.size,1);
+ assert.equal((await r.call({action:'previous_order',id},'anon')).status,400);
+ const doc=await r.call({action:'previous_order',id});
+ assert.deepEqual(doc.data,{quote_name:'previous.pdf',quote_data:payload.quote_data});
+ const listed=await r.call({action:'list'});
+ assert.equal(listed.data.requests[0].previous_order_name,'previous.pdf');
+ assert.equal(listed.data.requests[0].previous_order_data,undefined);
+ const params=new URLSearchParams(new URL(created.data.customer_url).hash.slice(1));
+ const loaded=await r.call({action:'load',id,token:params.get('token')},'anon');
+ assert.ok(!JSON.stringify(loaded.data).includes('previous'));
+ await r.call({...input,previous_order_name:'replacement.pdf'});await r.flush();
+ assert.equal(r.rows.get(id).previous_order_name,'previous.pdf');
+ assert.equal(r.events.filter(url=>url==='https://upload.example').length,2);
+});
+test('previous PDF validates both fields and remains optional',async()=>{
+ for(const fields of [{previous_order_name:'old.pdf'},{previous_order_data:payload.quote_data},{previous_order_name:'old.pdf',previous_order_data:btoa('not PDF')},{previous_order_name:'old.pdf',previous_order_data:'!invalid'},{previous_order_name:'old.pdf',previous_order_data:'a'.repeat(14000001)}]){
+  const r=runtime({mode:'shadow'});assert.equal((await r.call({...payload,...fields})).status,400);assert.equal(r.rows.size,0);
+ }
+ const r=runtime({mode:'shadow'});assert.equal((await r.call(payload)).status,200);
+ assert.equal((await r.call({action:'previous_order',id})).status,400);
 });

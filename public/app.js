@@ -1534,11 +1534,6 @@
       type: 'button',
       onclick: function () { window.print(); }
     }, 'Print / save a copy'));
-    buttons.appendChild(el('button', {
-      class: 'ghost',
-      type: 'button',
-      onclick: function () { window.location.reload(); }
-    }, 'Submit another order'));
     s.appendChild(buttons);
     card.appendChild(s);
 

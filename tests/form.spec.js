@@ -518,6 +518,8 @@ test.describe('confirmation record', () => {
       await expect(page.getByRole('button', { name: 'Print / save a copy' }))
         .toBeVisible();
 
+      await expect(page.getByRole('button', { name: 'Submit another order' })).toHaveCount(0);
+
       // The print block is hidden on screen but carries the full document.
       const print = page.locator('.print-only');
       await expect(print).toBeHidden();

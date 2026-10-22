@@ -11,7 +11,7 @@ async function stub(page, options = {}) {
     let submitted = !!options.submitted;
     let creates = 0;
     const request = { id, sync_pending: !!options.syncPending, integrations: options.syncPending ? [{provider:'linear',pending:true,error:'Provider unavailable'}] : [], expires_at: options.syncPending ? '2099-01-01' : undefined, mode: 'shadow', company_name: 'Acme', contact_name: 'Dana', contact_email: 'dana@acme.example',
-      quote_name: 'quote.pdf', quote_version: 1, barcode_type: 'linear', request_state: options.pending ? 'draft' : 'ready',
+      previous_order_name: options.previous ? 'previous.pdf' : null, quote_name: 'quote.pdf', quote_version: 1, barcode_type: 'linear', request_state: options.pending ? 'draft' : 'ready',
       customer_url: location.origin + '/linear-barcode.html#request=' + id + '&token=' + 'a'.repeat(64) };
     const client = {
       auth: {
@@ -252,3 +252,23 @@ for (const [source, destination] of [
   expect(missing).toEqual([]);
  });
 }
+
+test('optional previous order uploads alongside quote and opens from history',async({page})=>{
+ await stub(page,{history:true,previous:true});await page.goto('/admin/prepare-order');
+ const link=page.getByRole('link',{name:'Previous order: previous.pdf'});
+ await expect(link).toHaveAttribute('target','_blank');
+ await expect(link).toHaveAttribute('href','/quote.html?document=previous_order&request='+id);
+ await page.getByLabel('Company name *').fill('Acme');
+ await page.getByLabel('Contact name *').fill('Dana');
+ await page.getByLabel('Contact email *').fill('dana@acme.example');
+ await page.getByLabel('Label order type *').selectOption('linear');
+ const pdf={name:'quote.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7')};
+ await page.getByLabel('Completed quote PDF *').setInputFiles(pdf);
+ await page.getByLabel('Previous order PDF (optional)').setInputFiles({...pdf,name:'previous.pdf'});
+ await page.screenshot({path:'/tmp/previous-order-ui.png',fullPage:true});
+ await page.locator('#orderPreparation').getByRole('button',{name:'Prepare customer link'}).click();
+ await expect(page.getByRole('textbox',{name:'Customer link',exact:true})).toBeVisible();
+ const call=await page.evaluate(()=>window.__CALLS__.find(c=>c.action==='create'));
+ expect(call.previous_order_name).toBe('previous.pdf');
+ expect(call.previous_order_data).toBe(pdf.buffer.toString('base64'));
+});

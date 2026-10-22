@@ -50,9 +50,8 @@
   }
 
   /**
-   * Split a typed sequence into the four columns Metalcraft's own order
-   * confirmation uses. Their table reads Prefix / From / To / Suffix, so the
-   * document reads that way too and their order desk has nothing to translate.
+   * Split a typed sequence into its prefix and numeric range for the document.
+   * Preserve legacy suffix parsing internally; current forms require ending digits.
    *
    * `TSG-0001` over 500 gives prefix TSG-, from 0001, to 0500. Padding is the
    * customer's choice and is preserved; a run that outgrows its width gets
@@ -429,7 +428,6 @@
       el('th', { text: 'Prefix' }),
       el('th', { text: 'From' }),
       el('th', { text: 'To' }),
-      el('th', { text: 'Suffix' }),
       el('th', { text: 'Count' })
     ]);
     var seqRow = el('tr', {}, [
@@ -437,7 +435,6 @@
       el('td', { class: 'od-m', text: seq && seq.prefix ? seq.prefix : '—' }),
       el('td', { class: 'od-m od-b', text: seq && seq.from ? seq.from : '—' }),
       el('td', { class: 'od-m od-b', text: seq && seq.to ? seq.to : '—' }),
-      el('td', { class: 'od-m', text: seq && seq.suffix ? seq.suffix : '—' }),
       el('td', { class: 'od-m',
         text: seq && seq.count ? groupThousands(seq.count) : '—' })
     ]);
