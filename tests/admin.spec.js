@@ -1020,11 +1020,11 @@ test.describe('row actions', () => {
     await page.getByRole('button', {name:'Details'}).first().click();
     await page.getByRole('button', {name:'Vendor copy / PDF'}).click();
     expect(await page.evaluate(()=>window.__PDFS__)).toEqual([
-      'order-pdf.html?order=id-old&audience=vendor','order-pdf.html?order=id-old&audience=vendor'
+      '/order-pdf.html?order=id-old&audience=vendor','/order-pdf.html?order=id-old&audience=vendor'
     ]);
     await page.getByRole('button', {name:'View signed record'}).click();
     await page.getByRole('button', {name:'Print / save as PDF'}).click();
-    expect(await page.evaluate(()=>window.__PDFS__[2])).toBe('order-pdf.html?order=id-old&audience=record');
+    expect(await page.evaluate(()=>window.__PDFS__[2])).toBe('/order-pdf.html?order=id-old&audience=record');
   });
 
   test('a failed artwork fetch reports on the row, not in silence',
@@ -1162,6 +1162,6 @@ test('auth card fits a narrow screen and returns preparation sign-in to admin', 
   await page.getByLabel('Work email').fill('ian.wilson@beaconsoftware.com');
   await page.getByRole('button', { name: 'Send sign-in link' }).click();
   await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
-  expect(await page.evaluate(() => window.__AUTH_CALLS__.otp[0].options.emailRedirectTo)).toBe('http://127.0.0.1:4173/admin.html');
+  expect(await page.evaluate(() => window.__AUTH_CALLS__.otp[0].options.emailRedirectTo)).toBe('http://127.0.0.1:4173/admin/orders');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

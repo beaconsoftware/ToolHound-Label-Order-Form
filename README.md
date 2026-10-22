@@ -286,7 +286,7 @@ supabase secrets set RESEND_API_KEY=re_...
 supabase secrets set NOTIFY_WEBHOOK_SECRET="$(openssl rand -hex 32)"
 supabase secrets set NOTIFY_TO=graham.cooper@toolhound.com
 supabase secrets set NOTIFY_FROM='ToolHound Orders <orders@toolhound.com>'
-supabase secrets set DASHBOARD_URL=https://order.toolhound.com/admin
+supabase secrets set DASHBOARD_URL=https://order.toolhound.com/admin/orders
 ```
 
 `NOTIFY_FROM` has to be on a domain verified in Resend, or Resend rejects the
@@ -575,8 +575,13 @@ already-issued references remain unchanged.
 
 ### Production authentication URLs
 
-The production site is https://order.toolhound.com. Supabase Auth Site URL is
-https://order.toolhound.com/admin. Allow that exact callback (and /admin.html for
-existing bookmarks); sign-in always returns to admin. Local development uses
-/admin.html on localhost or 127.0.0.1, ports 4173 and 4175, with those exact
-callbacks also allowed. Old Vercel callbacks have been removed.
+The production site is https://order.toolhound.com. Supabase Auth Site URL and
+new email sign-ins target https://order.toolhound.com/admin/orders. The admin
+views are `/admin/orders` and `/admin/prepare-order`. `/admin` defaults to orders;
+old `/admin.html` and `/prepare-order.html` bookmarks redirect to their new views,
+including the legacy `?view=prepare` link. Legacy auth callbacks remain accepted
+so already-issued emails can follow these redirects.
+
+Local development uses the same routes on localhost or 127.0.0.1, ports 4173 and
+4175. Start `npm run dev -- --port 4175` for the routing-aware local server.
+Supabase allows exact `/admin/orders` callbacks for these local origins.

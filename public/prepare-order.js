@@ -161,7 +161,7 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
         customer.appendChild(el('span', { class: 'request-secondary' }, r.contact_name));
         customer.appendChild(el('span', { class: 'request-secondary' }, r.contact_email));
         item.appendChild(customer);
-        var quote = el('td'); quote.appendChild(el('a', { class: 'request-quote', title: 'Open ' + r.quote_name, href: 'quote.html?request=' + encodeURIComponent(r.id), target: '_blank', rel: 'noopener' }, r.quote_name));
+        var quote = el('td'); quote.appendChild(el('a', { class: 'request-quote', title: 'Open ' + r.quote_name, href: '/quote.html?request=' + encodeURIComponent(r.id), target: '_blank', rel: 'noopener' }, r.quote_name));
         quote.appendChild(el('span', { class: 'request-secondary' }, (r.barcode_type === 'qr' ? 'QR code' : 'Linear barcode') + ' · v' + r.quote_version));
         (r.integrations || []).forEach(function (integration) {
           if (integration.url) quote.appendChild(el('a', { href: integration.url, target: '_blank', rel: 'noopener', class: 'request-ticket' }, integration.identifier || integration.provider));
