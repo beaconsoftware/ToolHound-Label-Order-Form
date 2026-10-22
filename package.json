@@ -4,7 +4,7 @@
   "private": true,
   "description": "Public form for authorizing custom ToolHound label orders.",
   "scripts": {
-    "dev": "python3 -m http.server 4173 --directory public",
+    "dev": "python3 scripts/serve.py --port 4173",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:backend": "node --test tests/backend/*.cjs",

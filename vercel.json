@@ -79,6 +79,10 @@
         {
           "key": "Permissions-Policy",
           "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
         }
       ]
     },
@@ -94,6 +98,65 @@
           "value": "no-store"
         }
       ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/:legacy(admin|admin.html)",
+      "has": [
+        {
+          "type": "query",
+          "key": "view",
+          "value": "prepare"
+        }
+      ],
+      "destination": "/admin/prepare-order",
+      "permanent": true
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin/orders",
+      "permanent": true
+    },
+    {
+      "source": "/admin/",
+      "destination": "/admin/orders",
+      "permanent": true
+    },
+    {
+      "source": "/admin.html",
+      "destination": "/admin/orders",
+      "permanent": true
+    },
+    {
+      "source": "/prepare-order",
+      "destination": "/admin/prepare-order",
+      "permanent": true
+    },
+    {
+      "source": "/prepare-order.html",
+      "destination": "/admin/prepare-order",
+      "permanent": true
+    },
+    {
+      "source": "/admin/orders/",
+      "destination": "/admin/orders",
+      "permanent": true
+    },
+    {
+      "source": "/admin/prepare-order/",
+      "destination": "/admin/prepare-order",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/admin/orders",
+      "destination": "/admin"
+    },
+    {
+      "source": "/admin/prepare-order",
+      "destination": "/admin"
     }
   ]
 }

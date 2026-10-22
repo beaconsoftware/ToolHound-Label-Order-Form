@@ -123,18 +123,18 @@ test('admin and preparation have distinct routes that survive reload and back na
   await page.goto('/admin.html');
   await expect(page.getByRole('heading', {name:'Label orders', exact:true})).toBeVisible();
   await page.getByRole('link', {name:'Prepare customer link', exact:true}).click();
-  await expect(page).toHaveURL(/\/prepare-order\.html$/);
+  await expect(page).toHaveURL(/\/admin\/prepare-order$/);
   await expect(page.getByRole('link', {name:'Prepare customer link', exact:true})).toHaveAttribute('aria-current','page');
   await page.reload();
   await expect(page.getByLabel('Company name *')).toBeVisible();
   await page.getByLabel('Company name *').fill('Draft company');
   await page.getByRole('link', {name:'Label orders', exact:true}).click();
-  await expect(page).toHaveURL(/\/admin\.html$/);
+  await expect(page).toHaveURL(/\/admin\/orders$/);
   await expect(page.getByRole('heading', {name:'Label orders', exact:true})).toBeVisible();
   await page.goBack();
   await expect(page.getByLabel('Company name *')).toHaveValue('Draft company');
   await page.goto('/admin.html?view=prepare');
-  await expect(page).toHaveURL(/\/prepare-order\.html$/);
+  await expect(page).toHaveURL(/\/admin\/prepare-order$/);
 });
 
 test('history regenerates an expired request and displays the replacement link', async ({page}) => {
@@ -156,7 +156,7 @@ test('quote filename links to a separate authenticated PDF viewer', async ({page
  await stub(page,{history:true}); await page.goto('/prepare-order.html');
  const link=page.getByRole('link',{name:'quote.pdf',exact:true});
  await expect(link).toHaveAttribute('target','_blank');
- await expect(link).toHaveAttribute('href','quote.html?request='+id);
+ await expect(link).toHaveAttribute('href','/quote.html?request='+id);
 
 });
 test('quote viewer requires sign-in before fetching the PDF', async ({page}) => {
@@ -233,3 +233,22 @@ test('request table shows loading, retains rows during refresh and clears indica
   await page.getByRole('button', {name:'Refresh requests',exact:true}).click();
   await expect.poll(() => page.evaluate(() => window.__CALLS__.filter(c => c.action === 'list').length)).toBe(before + 1);
  });
+
+for (const [source, destination] of [
+ ['/admin','/admin/orders'], ['/admin/','/admin/orders'], ['/admin.html','/admin/orders'],
+ ['/prepare-order','/admin/prepare-order'], ['/prepare-order.html','/admin/prepare-order'],
+ ['/admin.html?view=prepare','/admin/prepare-order'],
+ ['/admin/orders','/admin/orders'], ['/admin/prepare-order','/admin/prepare-order']
+]) {
+ test('canonical admin route: '+source, async ({page}) => {
+  await stub(page, {signedOut:true});
+  const missing=[]; page.on('response',r=>{if(r.status()===404)missing.push(r.url());});
+  await page.goto(source+'#request=bookmark');
+  expect(new URL(page.url()).pathname).toBe(destination);
+  expect(new URL(page.url()).hash).toBe('#request=bookmark');
+  await expect(page.getByRole('heading',{name:'Sign in to label orders'})).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('Work email')).toBeVisible();
+  expect(missing).toEqual([]);
+ });
+}

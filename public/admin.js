@@ -395,7 +395,7 @@
         + 'until they have the PO, so the price is not known when it is raised '
         + '— the quantity and the line description are what the PO communicates.',
       generated_at: new Date().toISOString(),
-      source: window.location.origin + '/admin',
+      source: window.location.origin + '/admin/orders',
       orders: rows
     };
 
@@ -670,7 +670,7 @@
       var opts = {
         // Absolute, because a relative src means nothing once the HTML is in
         // somebody's mail client.
-        logoUrl: new URL('toolhound-logo.png', document.baseURI).href,
+        logoUrl: new URL('/toolhound-logo.png', document.baseURI).href,
         artwork: artwork
       };
       return writeRichClipboard(mod.emailHtml(o, opts), mod.emailText(o, opts))
@@ -828,7 +828,7 @@
       try {
         var res = await client.auth.signInWithOtp({ email: email,
           options: { emailRedirectTo: (['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
-            ? window.location.origin + '/admin.html' : 'https://order.toolhound.com/admin') } });
+            ? window.location.origin + '/admin/orders' : 'https://order.toolhound.com/admin/orders') } });
         if (res && res.error) throw res.error;
         var wasSent = !!sentEmail;
         sentEmail = email; field.hidden = true; change.hidden = false;
@@ -1085,7 +1085,7 @@
    * for an older order without an uploaded artifact.
    */
   function openOrderPdf(order, audience) {
-    window.open('order-pdf.html?order=' + encodeURIComponent(order.id) + '&audience=' + audience, '_blank', 'noopener');
+    window.open('/order-pdf.html?order=' + encodeURIComponent(order.id) + '&audience=' + audience, '_blank', 'noopener');
   }
 
   function rowActions(order, openDrawer) {
@@ -1463,7 +1463,7 @@
 
   // Migrate old bookmarks; each view now has its own reloadable URL.
   if (new URLSearchParams(location.search).get('view') === 'prepare') {
-    history.replaceState(null, '', 'prepare-order.html' + location.hash);
+    history.replaceState(null, '', '/admin/prepare-order' + location.hash);
   }
   var adminView = /\/prepare-order(?:\.html)?\/?$/.test(location.pathname) ? 'prepare' : 'orders';
   window.addEventListener('popstate', function () {

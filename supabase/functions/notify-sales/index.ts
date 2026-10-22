@@ -14,7 +14,7 @@
  *   supabase secrets set NOTIFY_WEBHOOK_SECRET=<long random string>
  *   supabase secrets set NOTIFY_TO=graham.cooper@toolhound.com
  *   supabase secrets set NOTIFY_FROM='ToolHound Orders <orders@toolhound.com>'
- *   supabase secrets set DASHBOARD_URL=https://order.toolhound.com/admin
+ *   supabase secrets set DASHBOARD_URL=https://order.toolhound.com/admin/orders
  */
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
