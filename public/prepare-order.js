@@ -208,10 +208,10 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
       count.textContent = rows.length + (rows.length === 1 ? ' request' : ' requests');
       var table = el('table', { class: 'request-table' });
       var head = el('thead'); var header = el('tr');
-      ['Customer', 'Quote / form', 'Status', 'Last sent', 'Expires', 'Actions'].forEach(function (name) { header.appendChild(el('th', { scope: 'col' }, name)); });
+      ['Customer', 'Quote / form', 'Created', 'Status', 'Last sent', 'Expires', 'Actions'].forEach(function (name) { header.appendChild(el('th', { scope: 'col' }, name)); });
       head.appendChild(header); table.appendChild(head);
       var body = el('tbody'); table.appendChild(body); list.appendChild(table);
-      if (!matches.length) { var empty = el('tr'); empty.appendChild(el('td', { colspan: '6', class: 'request-empty' }, rows.length ? 'No requests match your search.' : 'No requests yet. Prepared customer links will appear here.')); body.appendChild(empty); }
+      if (!matches.length) { var empty = el('tr'); empty.appendChild(el('td', { colspan: '7', class: 'request-empty' }, rows.length ? 'No requests match your search.' : 'No requests yet. Prepared customer links will appear here.')); body.appendChild(empty); }
       matches.forEach(function (r) {
         var item = el('tr');
         var customer = el('td');
@@ -233,6 +233,7 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
         (r.integrations || []).forEach(function (integration) { if (integration.error) status.appendChild(el('span', { class: 'request-secondary' }, integration.provider + ': ' + integration.error)); });
         if (r.mode === 'shadow') status.appendChild(el('span', { class: 'request-secondary' }, 'Test request'));
         if (r.submitted_at) status.appendChild(el('span', { class: 'request-secondary' }, 'Submitted: ' + date(r.submitted_at)));
+        item.appendChild(el('td', { title: r.created_at ? new Date(r.created_at).toLocaleString() : '' }, date(r.created_at)));
         item.appendChild(status);
         var sent = el('td', { title: r.sent_at ? 'Last marked sent: ' + new Date(r.sent_at).toLocaleString() + ' · ' + r.sent_recipient : 'Not marked sent' }, date(r.sent_at));
         if (r.sent_at) sent.appendChild(el('span', { class: 'request-secondary' }, r.sent_recipient));
