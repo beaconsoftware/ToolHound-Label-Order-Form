@@ -192,7 +192,7 @@
       fullColor: '',
       quantity: '', seqStart: '', instructions: '',
       labelType: '', labelSizeChoice: '', labelWidthIn: '', labelHeightIn: '',
-      shipToPhone: '', attentionName: '',
+      shipToPhone: '', attentionName: '', customerPo: '',
       authorizedName: '', approvalDate: new Date().toISOString().slice(0, 10),
       signatureData: '', signatureTypedName: '', signatureMode: 'type'
     }
@@ -430,6 +430,8 @@
     add('companyName', 'Company Name *');
     add('contactName', 'Customer Contact Name *');
     add('contactEmail', 'Customer Contact Email *', 'email', 'name@example.com');
+    add('customerPo', 'Customer PO number (optional)');
+    inputs.customerPo.maxLength = 64;
     add('address', 'Shipping Address *');
 
     var row = el('div', { class: 'row2' });
@@ -965,6 +967,7 @@
     b1.appendChild(reviewRow('Company', d.companyName));
     b1.appendChild(reviewRow('Contact', d.contactName));
     b1.appendChild(reviewRow('Email', d.contactEmail));
+    if (d.customerPo.trim()) b1.appendChild(reviewRow('Customer PO #', d.customerPo.trim()));
     b1.appendChild(reviewRow('Shipping Address', [d.address, d.city,
       d.stateProvince + ' ' + d.postalCode, d.country].join(', ')));
     if (d.attentionName) b1.appendChild(reviewRow('Receiving Contact', d.attentionName));
@@ -1341,28 +1344,8 @@
   // Submission
   // ---------------------------------------------------------------------------
 
-  /**
-   * Order references embed a timestamp for readability plus random entropy,
-   * because two customers submitting inside the same millisecond would
-   * otherwise collide on the table's unique index.
-   */
-  function makeOrderRef() {
-    var stamp = Date.now().toString(36).toUpperCase();
-    var rand = '';
-    var alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no easily confused glyphs
-    // Six characters over a 31 character alphabet is ~887 million values per
-    // millisecond. Four was measurably collision-prone when references are
-    // generated in a tight loop, and the timestamp alone does not separate
-    // two submissions landing in the same millisecond.
-    var bytes = new Uint8Array(6);
-    (window.crypto || window.msCrypto).getRandomValues(bytes);
-    for (var i = 0; i < bytes.length; i++) rand += alphabet[bytes[i] % alphabet.length];
-    return 'THL-' + stamp + '-' + rand;
-  }
-
-  function buildRow(d, orderRef) {
+  function buildRow(d) {
     return {
-      order_ref: orderRef,
       // No quote number: the form stopped asking. Quote numbers duplicate
       // across orders, so they were never a key. The shipping address is, and
       // it is on this order, on Metalcraft's invoice to us and on ours to the
@@ -1388,11 +1371,7 @@
       label_height_in: toDecimal(d.labelHeightIn),
       ship_to_phone: d.shipToPhone.trim() ? d.shipToPhone.trim() : null,
       attention_name: d.attentionName.trim() ? d.attentionName.trim() : null,
-      // The form no longer asks the customer for their own PO number: most do
-      // not have one to hand when they authorize, and the ones that matter
-      // arrive on the customer's PO document anyway. The column stays for the
-      // orders that already carry one and for staff to fill in later.
-      customer_po: null,
+      customer_po: d.customerPo.trim() || null,
       instructions: d.instructions.trim() ? d.instructions.trim() : null,
       authorized_name: d.authorizedName.trim(),
       approval_date: d.approvalDate,
@@ -1438,7 +1417,7 @@
       return;
     }
 
-    requestApi('submit', buildRow(state.data, makeOrderRef())).then(function (receipt) {
+    requestApi('submit', buildRow(state.data)).then(function (receipt) {
       state.submitting = false;
       state.orderRef = receipt.order_ref;
       state.submittedAt = new Date(receipt.submitted_at);
@@ -1654,7 +1633,6 @@
     state: state,
     variant: VARIANT,
     render: render,
-    makeOrderRef: makeOrderRef,
     buildRow: buildRow,
     endingSequence: endingSequence,
     toInt: toInt,

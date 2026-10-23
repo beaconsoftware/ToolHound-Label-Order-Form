@@ -27,7 +27,7 @@ async function stubDb(page, { failWith = null, failFirstNTimes = 0 } = {}) {
           if (failWith && calls <= (failFirstNTimes || Number.MAX_SAFE_INTEGER)) {
             return { data: { error: failWith.code === '23514' ? 'Some order details were rejected as invalid. Please check them and try again.' : 'Something went wrong submitting your order. Please try again.' } };
           }
-          return { data: { mode: 'live', order_ref: body.row.order_ref, submitted_at: new Date().toISOString() } };
+          return { data: { mode: 'live', order_ref: '1001', submitted_at: new Date().toISOString() } };
         } }
       };
     },
@@ -146,7 +146,7 @@ test('completes the full order flow and records the submission', async ({ page }
   await page.getByRole('button', { name: 'Submit Order' }).click();
 
   await expect(page.getByRole('heading', { name: 'Order Submitted' })).toBeVisible();
-  await expect(page.locator('.success').getByText(/^Reference: THL-/)).toBeVisible();
+  await expect(page.locator('.success').getByText(/^Reference: 1001/)).toBeVisible();
 
   const rows = await page.evaluate(() => window.__INSERTED__);
   expect(rows).toHaveLength(1);
@@ -528,7 +528,7 @@ test.describe('confirmation record', () => {
       await expect(print).toContainText('cannot be returned');
       await expect(print).toContainText('Dana Reyes');
       // The reference on the sheet is the internal order ref.
-      await expect(print).toContainText('THL-');
+      await expect(print).toContainText('1001');
     });
 
   // The confirmation must not promise an email that nothing sends.
@@ -546,20 +546,10 @@ test.describe('confirmation record', () => {
   });
 });
 
-test.describe('order references', () => {
-  test('are unique across many generations', async ({ page }) => {
-    const refs = await page.evaluate(() => {
-      const out = new Set();
-      for (let i = 0; i < 5000; i++) out.add(window.__TOOLHOUND_FORM__.makeOrderRef());
-      return out.size;
-    });
-    expect(refs).toBe(5000);
-  });
-
-  test('use an unambiguous alphabet', async ({ page }) => {
-    const ref = await page.evaluate(() => window.__TOOLHOUND_FORM__.makeOrderRef());
-    expect(ref).toMatch(/^THL-[0-9A-Z]+-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
-  });
+test('order number comes from the server, not the submission payload', async ({page}) => {
+ await submitOrder(page);
+ expect((await page.evaluate(()=>window.__INSERTED__))[0].order_ref).toBeUndefined();
+ expect(await page.evaluate(()=>window.__TOOLHOUND_FORM__.state.orderRef)).toBe('1001');
 });
 
 test.describe('fields the vendor PO needs', () => {
@@ -600,10 +590,8 @@ test.describe('fields the vendor PO needs', () => {
       expect(row.attention_name).toBe('Mike Betts');
     });
 
-  // The form no longer asks the customer for their own PO number. The column
-  // stays for orders that already carry one, so submissions send null.
-  test('no longer asks the customer for their PO number', async ({ page }) => {
-    await expect(page.getByLabel('Your PO Number')).toHaveCount(0);
+  test('saves the optional customer PO and prints it prominently', async ({ page }) => {
+    await page.getByLabel('Customer PO number (optional)').fill(' PO-12345 ');
     await fillStep1(page);
     await page.getByRole('button', { name: 'Continue' }).click();
     await fillStep2(page);
@@ -613,7 +601,13 @@ test.describe('fields the vendor PO needs', () => {
     await page.getByRole('button', { name: 'Submit Order' }).click();
 
     const row = (await page.evaluate(() => window.__INSERTED__))[0];
-    expect(row.customer_po).toBeNull();
+    expect(row.customer_po).toBe('PO-12345');
+    const doc=page.locator('.order-doc');
+    await expect(doc.locator('.od-title')).toContainText('PO-12345');
+    await expect(doc.locator('.od-shipto')).toContainText('PO-12345');
+    await expect(doc).toContainText('on the invoice and shipping label');
+    await page.emulateMedia({media:'print'});
+    await page.screenshot({path:'/tmp/order-po-print.png',fullPage:true});
   });
 
   test('the optional fields stay null when left blank', async ({ page }) => {
@@ -1208,7 +1202,7 @@ test.describe('label order document', () => {
     async ({ page }) => {
       await submitOrder(page);
       const ref = await page.evaluate(() => window.__TOOLHOUND_FORM__.state.orderRef);
-      expect(ref).toMatch(/^THL-/);
+      expect(ref).toBe('1001');
 
       await page.emulateMedia({ media: 'print' });
       const doc = page.locator('.order-doc');
@@ -1216,8 +1210,8 @@ test.describe('label order document', () => {
       // Masthead, reference strip and footer: the supplier can quote it back
       // from anywhere on the page.
       await expect(doc.locator('.od-dv', { hasText: ref })).toBeVisible();
-      await expect(doc.locator('.od-rv', { hasText: ref })).toBeVisible();
-      await expect(doc.locator('.od-foot')).toContainText(ref);
+      await expect(doc.locator('.od-refs')).toHaveCount(0);
+      await expect(doc.locator('.od-foot')).toHaveCount(0);
       // Labelled as an order number, not a quote number it no longer is.
       await expect(doc).toContainText('Order no.');
       await expect(doc).not.toContainText('Quote no.');
@@ -1236,11 +1230,13 @@ test.describe('label order document', () => {
     await expect(doc).not.toContainText('St Albert');
   });
 
-  test('correspondence goes to Graham and accounting',
+  test('correspondence goes to Ian, accounting and Ramp',
     async ({ page }) => {
       await submitOrder(page);
       const doc = page.locator('.order-doc');
-      await expect(doc).toContainText('graham.cooper@toolhound.com');
+      await expect(doc).toContainText('ian.wilson@toolhound.com');
+      await expect(doc).toContainText('ap.toolhound@ap.ramp.com');
+      await expect(doc).not.toContainText('graham.cooper');
       await expect(doc).toContainText('accounting@toolhound.com');
     });
 

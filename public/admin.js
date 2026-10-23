@@ -1400,7 +1400,7 @@
       ]),
       el('div', {
         class: 'artwork-note',
-        text: 'The specification only: no proof or invoice routing and no '
+        text: 'Manufacturing details and routing instructions, without '
           + 'signed authorisation, because none of that is the supplier\u2019s '
           + 'to act on.'
       }),

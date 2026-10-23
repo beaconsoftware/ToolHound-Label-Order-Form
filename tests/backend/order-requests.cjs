@@ -43,7 +43,7 @@ test('all migrations apply; invitation produces one signed order and repeat is i
  await seed();
  const first=await submit();
  const second=await submit(request,digest,{...row,quantity:9000});
- assert.match(first.order_ref,/^THL-[0-9A-Z]{8,10}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+ assert.equal(first.order_ref,'1001');
  assert.equal(first.order_ref,second.order_ref); assert.equal(second.already_submitted,true);
  const orders=(await db.query('select * from public.label_orders')).rows;
  assert.equal(orders.length,1); assert.equal(orders[0].quantity,3000); assert.equal(orders[0].barcode_type,'linear');
@@ -221,4 +221,22 @@ test('previous reference PDF is atomic and cannot be replaced by a retried creat
  await db.query('select public.create_order_request($1,$2,null)',[JSON.stringify({...request,previous_order_name:'replacement.pdf'}),JSON.stringify(quote)]);
  assert.deepEqual((await db.query('select previous_order_name,previous_order_data from public.order_requests where id=$1',[id])).rows[0],{previous_order_name:'old.pdf',previous_order_data:'JVBERi0xLjQ='});
  await assert.rejects(()=>db.query('update public.order_requests set previous_order_data=null where id=$1',[id]),/previous_order_pdf_pair/);
+});
+
+test('PO persists immutably and concurrent requests receive distinct numeric numbers',async()=>{
+ const ids=['20000000-0000-4000-8000-000000000081','20000000-0000-4000-8000-000000000082'];
+ for(const id of ids) await seed(id);
+ const receipts=await Promise.all(ids.map(id=>submit(id,id,{...row,customer_po:' PO-12345 '})));
+ assert.equal(Number(receipts[1].order_ref),Number(receipts[0].order_ref)+1);
+ for(let i=0;i<ids.length;i++){
+  assert.match(receipts[i].order_ref,/^[0-9]+$/);
+  const retry=await submit(ids[i],ids[i],{...row,customer_po:'CHANGED'});
+  assert.equal(retry.order_ref,receipts[i].order_ref);
+  assert.equal((await db.query('select customer_po from public.label_orders where order_request_id=$1',[ids[i]])).rows[0].customer_po,'PO-12345');
+ }
+ const id='20000000-0000-4000-8000-000000000083';await seed(id);
+ await assert.rejects(()=>submit(id,id,{...row,customer_po:'x'.repeat(65)}),/64 characters/);
+ await db.exec('set role anon');
+ try {await assert.rejects(()=>db.query("select nextval('public.label_order_number_seq')"),/permission denied/);}
+ finally{await db.exec('reset role');}
 });

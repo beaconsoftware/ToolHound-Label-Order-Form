@@ -148,21 +148,13 @@
    */
   function supplierInstructions(o, ref, opts) {
     var instr = txt(o.instructions).trim();
-    // The vendor copy carries the customer's own words only. Everything the
-    // standing paragraph says -- proofs, where to send the invoice, quoting our
-    // reference -- is ToolHound's internal process and is handled off the
-    // sheet. What it must never drop is the customer's instructions: "18x rolls
-    // of 500" and "pressure sensitive acrylic adhesive" are how the labels get
-    // made, not how the paperwork moves.
-    if (opts && opts.audience === 'vendor') return instr;
-
+    var po = txt(o.customerPo).trim();
+    var poInstruction = po ? 'Include customer PO # ' + po + ' on the invoice and shipping label.' : '';
     var by = (config || {}).orderedBy || {};
-    var standing = 'Send a proof for customer approval before production, and quote '
-      + 'our reference ' + (ref || '(see above)') + ' on the proof, order '
-      + 'acknowledgement, packing slip and invoice.'
+    var standing = 'Send a proof for customer approval before production.'
       + (by.salesEmail ? ' Send the proof to ' + by.salesEmail + '.' : '')
-      + (by.accountingEmail ? ' Send the invoice to ' + by.accountingEmail + '.' : '');
-    return instr ? instr + ' ' + standing : standing;
+      + (by.accountingEmail ? ' Send the invoice to ' + [by.accountingEmail, by.accountsPayableEmail].filter(Boolean).join(' and ') + '.' : '');
+    return [instr, poInstruction, standing].filter(Boolean).join(' ');
   }
 
   function colourText(fullColour) {
@@ -189,6 +181,7 @@
     meta = meta || {};
     return {
       quoteNumber: d.quoteNumber,
+      customerPo: d.customerPo,
       orderRef: meta.orderRef,
       issuedAt: meta.issuedAt || new Date(),
       companyName: d.companyName,
@@ -221,6 +214,7 @@
   function fromRow(row) {
     return {
       quoteNumber: row.quote_number,
+      customerPo: row.customer_po,
       orderRef: row.order_ref,
       issuedAt: row.submitted_at ? new Date(row.submitted_at) : null,
       companyName: row.company_name,
@@ -297,10 +291,8 @@
     opts = opts || {};
     // Two audiences, one template.
     //
-    // 'vendor' is the sheet that goes to Metalcraft: the specification and
-    // nothing else. Proof routing, invoice routing and the customer's signed
-    // authorisation are ToolHound's business, and putting them in front of the
-    // supplier invites them to act on process that is not theirs.
+    // 'vendor' carries manufacturing details and routing instructions.
+    // The customer's signature appears only on the signed record.
     //
     // 'record' (the default) is the signed copy: what the customer approved,
     // reproduced whole. Dropping the authorisation from that one would throw
@@ -328,7 +320,7 @@
     var title = el('div', { class: 'od-title' }, [
       el('div', { class: 'od-dt', text: 'Label Order' })
     ]);
-    [['Order no.', ref], ['Issued', fmtDate(o.issuedAt)], ['Page', '1 of 1']]
+    [['Order no.', ref]].concat(o.customerPo ? [['Customer PO #', o.customerPo]] : [], [['Issued', fmtDate(o.issuedAt)], ['Page', '1 of 1']])
       .forEach(function (pair) {
         title.appendChild(el('div', { class: 'od-drow' }, [
           el('span', { class: 'od-lab', text: pair[0] }),
@@ -349,7 +341,7 @@
     ]);
     var corr = el('div', { class: 'od-att od-att-flush' },
       el('b', { text: 'All correspondence' }));
-    [by.salesEmail, by.accountingEmail, by.phone].filter(Boolean)
+    [by.salesEmail, by.accountingEmail, by.accountsPayableEmail, by.phone].filter(Boolean)
       .forEach(function (line) {
         corr.appendChild(el('div', { class: 'od-ln', text: line }));
       });
@@ -371,11 +363,12 @@
     addressLines(o).forEach(function (line) {
       shipTo.appendChild(el('div', { class: 'od-ln', text: line }));
     });
-    if (o.attentionName || o.shipToPhone) {
+    if (o.attentionName || o.shipToPhone || o.customerPo) {
       var att = el('div', { class: 'od-att' });
       if (o.attentionName) {
         att.appendChild(el('b', { text: 'Attention: ' + txt(o.attentionName) }));
       }
+      if (o.customerPo) att.appendChild(el('div', { class: 'od-nm', text: 'Customer PO #: ' + txt(o.customerPo) }));
       if (o.shipToPhone) {
         att.appendChild(el('div', { class: 'od-ln', text: txt(o.shipToPhone) }));
       }
@@ -383,17 +376,6 @@
     }
 
     doc.appendChild(el('div', { class: 'od-parties' }, [orderedBy, supplier, shipTo]));
-
-    // --- reference strip --------------------------------------------------
-    // The end customer was the ship-to company restated, so it said nothing the
-    // panel above did not already say twice as loudly.
-    doc.appendChild(el('div', { class: 'od-refs' }, [
-      el('div', { class: 'od-ref' }, [
-        el('span', { class: 'od-lab od-blk',
-          text: 'Our reference — quote this on all documents' }),
-        el('span', { class: 'od-rv', text: ref || '—' })
-      ])
-    ]));
 
     // --- specification ----------------------------------------------------
     doc.appendChild(sectionBar('Label specification'));
@@ -479,7 +461,7 @@
         .forEach(function (n) { handling.appendChild(n); });
       labelled('Proof to', by.salesEmail || '')
         .forEach(function (n) { handling.appendChild(n); });
-      labelled('Invoice to', by.accountingEmail || '')
+      labelled('Invoice to', [by.accountingEmail, by.accountsPayableEmail].filter(Boolean).join(' · '))
         .forEach(function (n) { handling.appendChild(n); });
 
       doc.appendChild(el('div', { class: 'od-two' }, [
@@ -501,7 +483,6 @@
     }
 
     if (vendor) {
-      doc.appendChild(footer(by, ref));
       return doc;
     }
 
@@ -532,18 +513,8 @@
     doc.appendChild(auth);
 
     // --- footer -----------------------------------------------------------
-    doc.appendChild(footer(by, ref));
 
     return doc;
-  }
-
-  /** Shared, because the vendor copy returns before reaching the end. */
-  function footer(by, ref) {
-    return el('div', { class: 'od-foot' }, [
-      el('span', { text: [by.name, by.salesEmail, by.accountingEmail, by.phone]
-        .filter(Boolean).join(' · ') }),
-      el('span', { class: 'od-m', text: ref })
-    ]);
   }
 
   // ---------------------------------------------------------------------------
@@ -615,7 +586,7 @@
     var cfg = (config || {});
     var by = cfg.orderedBy || {};
     var sup = cfg.supplier || {};
-    var ref = txt(o.quoteNumber).trim() || txt(o.orderRef).trim();
+    var ref = txt(o.orderRef).trim() || txt(o.quoteNumber).trim();
     var seq = splitSequence(o.seqStart, o.quantity);
     var shape = shapeOf(cfg, o.labelType, o.labelWidthIn, o.labelHeightIn);
 
@@ -634,8 +605,9 @@
     h += '</td><td style="text-align:right;vertical-align:middle;">'
       + '<div style="font-size:17px;font-weight:bold;letter-spacing:.03em;">'
       + 'LABEL ORDER</div>'
-      + '<div style="font-size:12px;color:#5B5352;">Quote no. <strong'
+      + '<div style="font-size:12px;color:#5B5352;">Order no. <strong'
       + ' style="color:#201B1A;">' + esc(ref || '—') + '</strong></div>'
+      + (o.customerPo ? '<div><strong>Customer PO #: ' + esc(o.customerPo) + '</strong></div>' : '')
       + '<div style="font-size:12px;color:#5B5352;">Issued '
       + esc(fmtDate(o.issuedAt)) + '</div>'
       + '</td></tr></table>';
@@ -652,14 +624,14 @@
             .filter(Boolean).join(', '),
           txt(o.country),
           o.attentionName ? 'Attention: ' + txt(o.attentionName) : '',
+          o.customerPo ? 'Customer PO #: ' + txt(o.customerPo) : '',
           txt(o.shipToPhone)
         ], 'background:#FBEDEC;')
       + emCell('Supplier', [txt(sup.name)].concat(sup.addressLines || []))
       + '</tr>';
     h += '<tr>'
       + emCell('Ordered by', [txt(by.name), txt(by.salesEmail),
-          txt(by.accountingEmail), txt(by.phone)])
-      + emCell('Our reference — quote this on all documents', [ref || '—'])
+          txt(by.accountingEmail), txt(by.accountsPayableEmail), txt(by.phone)])
       + '</tr>';
 
     // specification
@@ -688,10 +660,7 @@
     }
     if (o.logoFileName) h += emRow('Logo file name', o.logoFileName);
 
-    // instructions -- called out on its own because it is the part a person
-    // wrote, and the part most likely to be the reason for the email. The
-    // email goes to Metalcraft, so it is the vendor copy unless told otherwise:
-    // the customer's notes, without ToolHound's proof and invoice routing.
+    // Keep customer instructions, PO requirements and document routing together.
     var instrText = supplierInstructions(o, ref,
       { audience: opts.audience || 'vendor' });
     if (instrText) {
@@ -716,12 +685,6 @@
         + ' — attached to this email.</div>';
     }
 
-    h += '<div style="' + EM.body + 'margin-top:14px;font-size:11px;'
-      + 'color:#8C8280;border-top:1px solid #D9D3D0;padding-top:8px;">'
-      + esc(txt(by.name)) + ' · ' + esc(txt(by.salesEmail)) + ' · '
-      + esc(txt(by.accountingEmail)) + ' · ' + esc(txt(by.phone))
-      + '</div>';
-
     return h + '</div>';
   }
 
@@ -735,13 +698,14 @@
     var cfg = (config || {});
     var by = cfg.orderedBy || {};
     var sup = cfg.supplier || {};
-    var ref = txt(o.quoteNumber).trim() || txt(o.orderRef).trim();
+    var ref = txt(o.orderRef).trim() || txt(o.quoteNumber).trim();
     var seq = splitSequence(o.seqStart, o.quantity);
     var shape = shapeOf(cfg, o.labelType, o.labelWidthIn, o.labelHeightIn);
     var L = [];
 
     L.push('LABEL ORDER');
-    L.push('Quote no.: ' + (ref || '-'));
+    L.push('Order no.: ' + (ref || '-'));
+    if (o.customerPo) L.push('Customer PO #: ' + txt(o.customerPo));
     L.push('Issued: ' + fmtDate(o.issuedAt));
     L.push('');
     L.push('SHIP TO - DELIVER DIRECT TO END CUSTOMER');
@@ -751,6 +715,7 @@
       .filter(Boolean).join(', '));
     L.push('  ' + txt(o.country));
     if (o.attentionName) L.push('  Attention: ' + txt(o.attentionName));
+    if (o.customerPo) L.push('  Customer PO #: ' + txt(o.customerPo));
     if (o.shipToPhone) L.push('  ' + txt(o.shipToPhone));
     L.push('');
     L.push('SUPPLIER');
@@ -791,8 +756,7 @@
       instrText.split('\n').forEach(function (l) { L.push('  ' + l); });
       L.push('');
     }
-    L.push(txt(by.name) + ' · ' + txt(by.salesEmail) + ' · '
-      + txt(by.accountingEmail) + ' · ' + txt(by.phone));
+
 
     return L.join('\n');
   }

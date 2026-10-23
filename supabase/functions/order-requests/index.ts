@@ -115,6 +115,7 @@ async function handle(req: Request, appOrigin: string) {
     if (!row || typeof row !== 'object' || Array.isArray(row) || JSON.stringify(row).length > 9000000) throw new Error('Invalid order details.');
     for (const key of ['company_name','contact_name','contact_email','address','city','state_province','postal_code','country','authorized_name']) text(row[key]);
     if (!email.test(row.contact_email) || !row.signature_data?.startsWith('data:image/png;base64,') || !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 1000000) throw new Error('Complete the order details and authorization before submitting.');
+    if (row.customer_po != null && row.customer_po !== '') row.customer_po = text(row.customer_po, 64);
     const receipt = checked(await db.rpc('submit_order_request', { p_id: r.id, p_token_hash: digest, p_row: row }));
     const saved = withReceipt(checked(await db.from('order_requests').select('*,' + receiptJoin).eq('id', r.id).single()));
     scheduleSync(saved.id);

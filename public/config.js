@@ -34,8 +34,9 @@
   // chance of a reader picking the wrong block.
   orderedBy: {
     name: 'ToolHound, Inc.',
-    salesEmail: 'graham.cooper@toolhound.com',
+    salesEmail: 'ian.wilson@toolhound.com',
     accountingEmail: 'accounting@toolhound.com',
+    accountsPayableEmail: 'ap.toolhound@ap.ramp.com',
     phone: '1 (800) 387-8665'
   },
 
