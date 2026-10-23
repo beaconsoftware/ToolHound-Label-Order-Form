@@ -48,6 +48,12 @@ test('shared document renders vendor and signed PDFs with embedded signature',as
  try {
   await require('esbuild').build({entryPoints:['supabase/functions/order-requests/order-pdf.ts'],outfile:output,bundle:true,platform:'node',format:'cjs',loader:{'.png':'dataurl'},plugins:[{name:'npm',setup(b){b.onResolve({filter:/^npm:/},a=>({path:require.resolve(a.path.replace(/^npm:/,'').replace(/@\d[^/]*/,''))}))}}]});
   const {generateOrderPdf}=require(output);
+  const ctx={};vm.createContext(ctx);vm.runInContext(stripTypeScriptTypes(fs.readFileSync('supabase/functions/order-requests/test-runner.ts','utf8').replace(/^export /gm,'')),ctx);
+  const fixture=ctx.testOrderFixture({barcode:'qr',artwork:'custom_logo',material:'premium_poly_pro',colour:true,po:true});
+  const testPdf=await generateOrderPdf({...fixture.row,order_ref:'TEST QUOTE'},'vendor');
+  assert.equal(Buffer.from(testPdf).subarray(0,5).toString(),'%PDF-');
+  const signedTest=await generateOrderPdf({...fixture.row,order_ref:'1001'},'record');
+  assert.ok(signedTest.length>10000);
   const signature='data:image/png;base64,'+fs.readFileSync('public/toolhound-logo.png').toString('base64');
   const row={customer_po:'PO-12345',attention_name:'Receiving department',address:'1 Main Street',city:'Toronto',state_province:'ON',postal_code:'M1M 1M1',country:'Canada',order_ref:'1001',company_name:'Acme Montréal',text_lines:['Equipment'],instructions:'Ship rolls of 500. '.repeat(100),signature_data:signature,authorized_name:'Jane Smith',approval_date:'2026-10-20'};
   const vendor=await generateOrderPdf(row,'vendor'), signed=await generateOrderPdf(row,'record');

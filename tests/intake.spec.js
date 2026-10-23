@@ -15,7 +15,7 @@ async function stub(page, options = {}) {
       customer_url: location.origin + '/linear-barcode.html#request=' + id + '&token=' + 'a'.repeat(64) };
     const client = {
       auth: {
-        getSession: async () => ({ data: { session: options.signedOut ? null : { user: { email: options.email || 'graham.cooper@toolhound.com' } } } }),
+        getSession: async () => ({ data: { session: options.signedOut ? null : { user: { id:options.userId, email: options.email || 'graham.cooper@toolhound.com' } } } }),
         signInWithOtp: async args => { window.__CALLS__.push(args); return {}; },
         signOut: async () => ({})
       },
@@ -23,6 +23,7 @@ async function stub(page, options = {}) {
         window.__CALLS__.push(body);
         if(body.action==='list' && options.holdList) return await new Promise(resolve=>{window.__finishList=(fail)=>resolve(fail?{data:{error:'Connection failed'}}:{data:{requests:[request]}});});
         if (body.action === 'mark_sent' && options.holdMark) return await new Promise(resolve => { window.__finishMark = fail => resolve(fail ? {data:{error:'Save failed. Retry.'}} : {data:{ok:true}}); });
+        if (body.action === 'test_run') { if(options.failTest && creates++ === 0) return {data:{error:'Connection interrupted'}}; return {data:{...request,mode:'live',order_ref:'1001'}}; }
         if (body.action === 'quote') return {data:{quote_name:'quote.pdf',quote_data:btoa('%PDF-1.7\n%%EOF')}};
         if (options.failLoad && body.action === 'load') return { data: { error: 'Invalid customer link' } };
         if (body.action === 'load') return { data: { barcode_type: options.wrongVariant ? 'qr' : 'linear', mode: 'shadow',
@@ -271,4 +272,38 @@ test('optional previous order uploads alongside quote and opens from history',as
  const call=await page.evaluate(()=>window.__CALLS__.find(c=>c.action==='create'));
  expect(call.previous_order_name).toBe('previous.pdf');
  expect(call.previous_order_data).toBe(pdf.buffer.toString('base64'));
+});
+
+test('production test runner is visible only to Steve and submits the selected branch',async({page})=>{
+ await stub(page,{email:'steve.li@beaconsoftware.com',userId:'878f32d6-ddbe-41fc-97c9-77beb4600aa2'});
+ await page.goto('/admin/prepare-order');
+ await page.getByText('Production test runner — Steve only',{exact:true}).click();
+ await page.getByLabel('Code type',{exact:true}).selectOption('qr');
+ await page.getByLabel('Artwork',{exact:true}).selectOption('custom_text');
+ await expect(page.getByLabel('Printing',{exact:true})).toBeDisabled();
+ await page.getByLabel('Customer PO',{exact:true}).selectOption('no');
+ await page.screenshot({path:'/tmp/production-test-runner.png',fullPage:true});
+ await page.getByRole('button',{name:'Create and submit production test',exact:true}).click();
+ await expect(page.getByRole('link',{name:'Open submitted customer link'})).toBeVisible();
+ const call=await page.evaluate(()=>window.__CALLS__.find(c=>c.action==='test_run'));
+ expect(call.scenario).toEqual({barcode:'qr',artwork:'custom_text',material:'premium_poly_pro',colour:false,po:false});
+ await expect(page.getByRole('button',{name:'Create and submit production test',exact:true})).toBeDisabled();
+});
+test('other staff cannot see the production runner',async({page})=>{
+ await stub(page);await page.goto('/admin/prepare-order');
+ await expect(page.getByText('Production test runner — Steve only',{exact:true})).toHaveCount(0);
+});
+
+test('production test retry retains its ID and selected scenario',async({page})=>{
+ await stub(page,{email:'steve.li@beaconsoftware.com',userId:'878f32d6-ddbe-41fc-97c9-77beb4600aa2',failTest:true});
+ await page.goto('/admin/prepare-order');
+ await page.getByText('Production test runner — Steve only',{exact:true}).click();
+ await expect(page.getByRole('button',{name:'Start another test'})).toBeHidden();
+ await page.getByRole('button',{name:'Create and submit production test',exact:true}).click();
+ await expect(page.getByText(/Connection interrupted/)).toBeVisible();
+ await expect(page.getByLabel('Code type',{exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'Retry saved production test',exact:true}).click();
+ await expect(page.getByRole('link',{name:'Open submitted customer link'})).toBeVisible();
+ const calls=await page.evaluate(()=>window.__CALLS__.filter(c=>c.action==='test_run'));
+ expect(calls).toHaveLength(2);expect(calls[0].id).toBe(calls[1].id);expect(calls[0].scenario).toEqual(calls[1].scenario);
 });
