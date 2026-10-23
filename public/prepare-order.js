@@ -85,6 +85,51 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
       } }, 'Recover pending request'));
       root.appendChild(recovery);
     }
+
+    if (session.user.id === '878f32d6-ddbe-41fc-97c9-77beb4600aa2' && session.user.email.toLowerCase() === 'steve.li@beaconsoftware.com') {
+      var testCard = el('details', { class: 'card' });
+      testCard.appendChild(el('summary', {}, 'Production test runner — Steve only'));
+      testCard.appendChild(el('p', { class: 'hint' }, 'Creates a real customer link, submits sample details, and triggers order PDFs and a Linear ticket. Every run is marked TEST — DO NOT FULFILL. This submits through the form API; it does not click through the wizard.'));
+      var testForm = el('form');
+      var testGrid = el('div', { class: 'intake-grid' });
+      function choice(label, key, options) {
+        var box=el('div');box.appendChild(el('label',{for:'test-'+key},label));
+        var select=el('select',{id:'test-'+key});
+        options.forEach(function(pair){select.appendChild(el('option',{value:pair[0]},pair[1]));});
+        box.appendChild(select);testGrid.appendChild(box);return select;
+      }
+      var testCode=choice('Code type','code',[['linear','Linear barcode'],['qr','QR code']]);
+      var testArt=choice('Artwork','artwork',[['toolhound_logo','ToolHound logo'],['custom_logo','Custom logo upload'],['custom_text','Custom text'],['serial_only','Serial number only']]);
+      var testMaterial=choice('Material / size','material',[['premium_poly_pro','Premium Poly Pro — 1.25 × 0.50 in'],['white_polypropylene','White Polypropylene — 1.25 × 0.50 in'],['anodized_aluminum_3mil','Anodized Aluminum — 1.25 × 0.50 in']]);
+      var testColour=choice('Printing','colour',[['no','Black and white'],['yes','Full colour']]);
+      var testPo=choice('Customer PO','po',[['yes','Include a sample PO'],['no','Leave blank']]);
+      testArt.addEventListener('change',function(){testColour.disabled=['custom_text','serial_only'].includes(testArt.value);if(testColour.disabled)testColour.value='no';});
+      testForm.appendChild(testGrid);
+      var run=el('button',{type:'submit',class:'primary'},'Create and submit production test');
+      var again=el('button',{type:'button',class:'secondary',style:'display:none'},'Start another test');
+      var testStatus=el('div',{class:'intake-message',role:'status',hidden:''});
+      var testResult=el('div');
+      var runState=null;
+      try {runState=JSON.parse(sessionStorage.getItem('toolhound-production-test'));}catch(_){}
+      function lockRun(){[testCode,testArt,testMaterial,testColour,testPo].forEach(function(n){n.disabled=true;});}
+      if(runState){testCode.value=runState.scenario.barcode;testArt.value=runState.scenario.artwork;testMaterial.value=runState.scenario.material;testColour.value=runState.scenario.colour?'yes':'no';testPo.value=runState.scenario.po?'yes':'no';lockRun();run.textContent='Retry saved production test';notice(testStatus,'A previous run may have completed. Retry to recover its original order.');}
+      again.addEventListener('click',function(){runState=null;sessionStorage.removeItem('toolhound-production-test');run.disabled=false;run.textContent='Create and submit production test';again.style.display='none';[testCode,testArt,testMaterial,testColour,testPo].forEach(function(n){n.disabled=false;});testArt.dispatchEvent(new Event('change'));testResult.replaceChildren();testStatus.hidden=true;});
+      testForm.addEventListener('submit',async function(e){
+        e.preventDefault();if(run.disabled)return;
+        if(!runState){runState={id:crypto.randomUUID(),scenario:{barcode:testCode.value,artwork:testArt.value,material:testMaterial.value,colour:testColour.value==='yes',po:testPo.value==='yes'}};sessionStorage.setItem('toolhound-production-test',JSON.stringify(runState));}
+        lockRun();run.disabled=true;notice(testStatus,'Creating and submitting a real production test…');
+        try{
+          var result=await api({action:'test_run',id:runState.id,scenario:runState.scenario});
+          notice(testStatus,'Production test submitted. Order '+result.order_ref+'. PDFs and Linear sync may take a moment.');
+          testResult.replaceChildren();
+          testResult.appendChild(el('a',{class:'secondary',href:result.customer_url,target:'_blank',rel:'noopener'},'Open submitted customer link'));
+          testResult.appendChild(el('a',{class:'secondary',href:'/admin/orders'},'View label orders'));
+          sessionStorage.removeItem('toolhound-production-test');again.style.display='inline-block';
+          await refreshHistory();
+        }catch(err){notice(testStatus,err.message+' Retry uses the same request and cannot create a second order.');run.disabled=false;run.textContent='Retry saved production test';}
+      });
+      testForm.appendChild(run);testForm.appendChild(again);testForm.appendChild(testStatus);testForm.appendChild(testResult);testCard.appendChild(testForm);root.appendChild(testCard);
+    }
     var history = el('section', { class: 'request-history' });
     var heading = el('div', { class: 'request-history-head' });
     var title = el('div');

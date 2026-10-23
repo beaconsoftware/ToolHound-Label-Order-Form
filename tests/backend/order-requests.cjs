@@ -240,3 +240,19 @@ test('PO persists immutably and concurrent requests receive distinct numeric num
  try {await assert.rejects(()=>db.query("select nextval('public.label_order_number_seq')"),/permission denied/);}
  finally{await db.exec('reset role');}
 });
+
+test('every production test scenario satisfies the real order constraints',async()=>{
+ const vm=require('node:vm'),{stripTypeScriptTypes}=require('node:module');
+ const context={};vm.createContext(context);
+ vm.runInContext(stripTypeScriptTypes(fs.readFileSync('supabase/functions/order-requests/test-runner.ts','utf8').replace(/^export /gm,'')),context);
+ let n=200;
+ for(const barcode of ['linear','qr']) for(const artwork of ['toolhound_logo','custom_logo','custom_text','serial_only'])
+ for(const material of ['premium_poly_pro','white_polypropylene','anodized_aluminum_3mil']) for(const po of [true,false])
+ for(const colour of (['custom_text','serial_only'].includes(artwork)?[false]:[true,false])){
+  const fixture=context.testOrderFixture({barcode,artwork,material,po,colour});
+  const id='20000000-0000-4000-8000-'+String(n++).padStart(12,'0');
+  await seed(id);
+  const result=await submit(id,id,fixture.row);
+  assert.match(result.order_ref,/^[0-9]+$/);
+ }
+});

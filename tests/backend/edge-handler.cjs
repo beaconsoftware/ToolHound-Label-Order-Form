@@ -10,12 +10,19 @@ function runtime(options = {}) {
  const env = { SUPABASE_URL:'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY:'private', ORDER_APP_URL:'https://orders.example',
   ORDER_ALLOWED_ORIGINS:options.origins||'',ORDER_LINK_SECRET:'test-secret-with-at-least-32-characters',ORDER_REQUESTS_MODE:options.mode || 'live',
   ORDER_INTEGRATION_PROVIDER:options.disabled?'none':options.provider,LINEAR_LABEL_ORDER_TEMPLATE_ID:options.templateId,LINEAR_API_KEY:'private-linear',LINEAR_TEAM_ID:'team',LINEAR_INTAKE_STATE_ID:'state' };
- const jobs = new Map(), tasks = [];
- const db={auth:{getUser:async token=>({data:{user:token==='staff'?{id:'staff', email:options.email||'graham.cooper@toolhound.com',email_confirmed_at:options.unconfirmed?null:'2026-01-01'}:null},error:token!=='staff'})},
+ const jobs = new Map(), tasks = [], submitted = new Map();
+ const db={auth:{getUser:async token=>({data:{user:token==='staff'?{id:options.userId||'staff', email:options.email||'graham.cooper@toolhound.com',email_confirmed_at:options.unconfirmed?null:'2026-01-01'}:null},error:token!=='staff'})},
  rpc: async (name,args)=>{
   if(name==='is_label_order_staff') {
    const address=(options.email || 'graham.cooper@toolhound.com').toLowerCase();
    return {data:!options.denied && (address.split('@')[1]==='beaconsoftware.com' || address==='graham.cooper@toolhound.com'),error:options.authRpcError};
+  }
+  if(name==='submit_order_request') {
+   if(!submitted.has(args.p_id)) {
+    submitted.set(args.p_id,{...args.p_row,order_ref:'1001',submitted_at:'2026-10-23T12:00:00Z',id:args.p_id,mode:'live'});
+    rows.get(args.p_id).label_orders=[submitted.get(args.p_id)];
+   }
+   return {data:submitted.get(args.p_id)};
   }
   if(name==='regenerate_order_request') {
    Object.assign(rows.get(args.p_id),{token_version:args.p_version+1,token_hash:args.p_token_hash});return {data:null};
@@ -67,7 +74,7 @@ function runtime(options = {}) {
   if(query.includes('issueCreate')) {
    const issue={id:variables.input.id,identifier:'TH-1',url:'https://linear.app/toolhound/issue/TH-1'};
    assert.equal(variables.input.templateId,options.templateId || 'b8be76d3-d22c-4e18-9522-1f7f4824b733');
-   assert.equal(variables.input.title,'[Label Order] Acme');
+   assert.equal(variables.input.title, options.runner ? '[Label Order] TEST — DO NOT FULFILL' : '[Label Order] Acme');
    assert.equal(variables.input.assigneeId,undefined); assert.equal(variables.input.priority,undefined); assert.equal(variables.input.labelIds,undefined);
    assert.match(variables.input.description,/### Label Order Form\n\nAwaiting customer submission/);
    assert.match(variables.input.description,/### Billing Email\n\nAwaiting customer confirmation/);
@@ -80,10 +87,10 @@ function runtime(options = {}) {
   if(query.includes('issues(')) return Response.json({data:{issues:{nodes:issues.has(variables.id)?[issues.get(variables.id)]:[]}}});
   throw new Error('Unexpected outbound operation');
  }
- const source=['linear-adapter.ts','integrations.ts','index.ts'].map(file=>fs.readFileSync('supabase/functions/order-requests/'+file,'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')).join('\n');
- const context={structuredClone,createClient:()=>db,EdgeRuntime:{waitUntil:p=>tasks.push(p)},Deno:{env:{get:k=>env[k]},serve:fn=>{handler=fn;}},TextEncoder,TextDecoder,Uint8Array,Headers,Request,Response,URL,crypto:webcrypto,fetch:fakeFetch,AbortSignal,atob,btoa,generateOrderPdf:async()=>new TextEncoder().encode("%PDF-test"),console};
+ const source=['test-runner.ts','linear-adapter.ts','integrations.ts','index.ts'].map(file=>fs.readFileSync('supabase/functions/order-requests/'+file,'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')).join('\n');
+ const context={structuredClone,createClient:()=>db,EdgeRuntime:{waitUntil:p=>tasks.push(p)},Deno:{env:{get:k=>env[k]},serve:fn=>{handler=fn;}},TextEncoder,TextDecoder,Uint8Array,Headers,Request,Response,URL,URLSearchParams,crypto:webcrypto,fetch:fakeFetch,AbortSignal,atob,btoa,generateOrderPdf:async()=>new TextEncoder().encode("%PDF-test"),console};
  vm.runInNewContext(stripTypeScriptTypes(source),context);
- return {raw:handler,rows,issues,events,jobs,flush:async()=>{await Promise.all(tasks);},call:async(body,bearer='staff',extraHeaders={})=>{
+ return {raw:handler,rows,issues,events,jobs,submitted,flush:async()=>{await Promise.all(tasks);},call:async(body,bearer='staff',extraHeaders={})=>{
   const res=await handler(new Request('https://example.supabase.co/functions/v1/order-requests',{method:'POST',headers:{authorization:'Bearer '+bearer,origin:env.ORDER_APP_URL,...extraHeaders},body:JSON.stringify(body)}));
   return {status:res.status,data:await res.json()};
  }};
@@ -225,4 +232,30 @@ test('previous PDF validates both fields and remains optional',async()=>{
  }
  const r=runtime({mode:'shadow'});assert.equal((await r.call(payload)).status,200);
  assert.equal((await r.call({action:'previous_order',id})).status,400);
+});
+
+const operator={email:'steve.li@beaconsoftware.com',userId:'878f32d6-ddbe-41fc-97c9-77beb4600aa2',runner:true};
+const scenario={barcode:'linear',artwork:'toolhound_logo',material:'premium_poly_pro',colour:false,po:true};
+test('production runner rejects everyone except its verified operator',async()=>{
+ for(const options of [{},{email:operator.email},{userId:operator.userId,email:'other@beaconsoftware.com'},{...operator,unconfirmed:true}]){
+  const r=runtime(options);assert.equal((await r.call({action:'test_run',id,scenario})).status,400);
+  assert.equal(r.rows.size,0);assert.equal(r.events.length,0);
+ }
+});
+test('production runner creates a live request and submits once, preserving retries',async()=>{
+ const r=runtime(operator);
+ const first=await r.call({action:'test_run',id,scenario});assert.equal(first.status,200);await r.flush();
+ assert.equal(r.rows.get(id).mode,'live');assert.equal(r.issues.size,1);assert.equal(r.submitted.size,1);
+ assert.equal(r.submitted.get(id).company_name,'TEST — DO NOT FULFILL');
+ assert.equal(r.submitted.get(id).customer_po,'TEST-PO-1001');assert.ok(first.data.customer_url);
+ const again=await r.call({action:'test_run',id,scenario});assert.equal(again.status,200);
+ assert.equal(again.data.order_ref,first.data.order_ref);assert.equal(r.submitted.size,1);
+ assert.equal((await r.call({action:'test_run',id,scenario:{...scenario,barcode:'qr'}})).status,400);
+});
+test('runner rejects unknown scenarios and refuses shadow mode or another request',async()=>{
+ for(const options of [{...operator,mode:'shadow'},operator]){
+  const r=runtime(options);assert.equal((await r.call({action:'test_run',id,scenario:{...scenario,artwork:'invalid'}})).status,400);assert.equal(r.rows.size,0);
+ }
+ const r=runtime(operator);await r.call(payload);
+ assert.equal((await r.call({action:'test_run',id,scenario})).status,400);assert.equal(r.submitted.size,0);
 });

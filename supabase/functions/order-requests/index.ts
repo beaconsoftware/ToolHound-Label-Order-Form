@@ -1,3 +1,4 @@
+import { isTestOperator, testOrderFixture } from './test-runner.ts';
 import { generateOrderPdf } from './order-pdf.ts';
 import { createIntegrationRunner, integrationProvider } from './integrations.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
@@ -122,6 +123,39 @@ async function handle(req: Request, appOrigin: string) {
     return receipt;
   }
   const user = await staff(req);
+  if (body.action === 'test_run') {
+    if (!isTestOperator(user)) throw new Error('This test runner is restricted to its owner.');
+    if (env('ORDER_REQUESTS_MODE') !== 'live') throw new Error('Production mode must be enabled to run this test.');
+    if (!uuid.test(body.id || '')) throw new Error('Invalid test request ID.');
+    const fixture = testOrderFixture(body.scenario);
+    const existing = checked(await db.from('order_requests').select('created_by,mode,company_name,quote_name').eq('id', body.id).maybeSingle());
+    const quoteName = 'TEST-' + fixture.key + '.pdf';
+    if (existing && (existing.created_by !== user.id || existing.mode !== 'live' ||
+      existing.company_name !== fixture.row.company_name || existing.quote_name !== quoteName)) {
+      throw new Error('This request belongs to another run. Start a new test.');
+    }
+    // Use the ordinary creation and token submission handlers, including their
+    // validation, durable integration jobs and one-order-per-request guarantee.
+    const invoke = (payload: any) => handle(new Request(req.url, {
+      method: 'POST', headers: req.headers, body: JSON.stringify(payload)
+    }), appOrigin);
+    let created;
+    if (existing) {
+      created = await invoke({action:'recover',id:body.id});
+    } else {
+      const pdf = await generateOrderPdf({...fixture.row,order_ref:'TEST QUOTE',submitted_at:new Date().toISOString()},'vendor');
+      let binary = '';
+      for (let i=0;i<pdf.length;i+=8192) binary += String.fromCharCode(...pdf.subarray(i,i+8192));
+      created = await invoke({action:'create',id:body.id,company_name:fixture.row.company_name,
+        contact_name:fixture.row.contact_name,contact_email:fixture.row.contact_email,
+        barcode_type:fixture.row.barcode_type,quote_name:quoteName,quote_data:btoa(binary)});
+    }
+    if (created.quote_name !== quoteName || created.barcode_type !== fixture.row.barcode_type) throw new Error('This request already belongs to a different scenario.');
+    const params = new URLSearchParams(new URL(created.customer_url).hash.slice(1));
+    const receipt = await invoke({action:'submit',id:body.id,token:params.get('token'),row:fixture.row});
+    return {...created,...receipt,scenario:fixture.key};
+  }
+
   if (body.action === 'order_pdf') {
     if (!uuid.test(body.id || '') || !['vendor', 'record'].includes(body.audience)) throw new Error('Invalid order PDF.');
     const order = checked(await db.from('label_orders').select('*').eq('id', body.id).maybeSingle());
