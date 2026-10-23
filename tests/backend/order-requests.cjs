@@ -9,14 +9,14 @@ const request = '20000000-0000-4000-8000-000000000001';
 const digest = 'a'.repeat(64);
 const row = {
   company_name:'Acme',contact_name:'Dana',contact_email:'dana@acme.example',address:'1 Main',city:'Toronto',
-  state_province:'ON',postal_code:'M1M 1M1',country:'Canada',barcode_type:'qr',logo_choice:'serial_only',
+  state_province:'ON',postal_code:'M1M 1M1',country:'Canada',barcode_type:'qr',logo_choice:'custom_text',text_lines:['Toolhound'],
   full_color:'No',quantity:3000,seq_start:'001',label_type:'premium_poly_pro',label_width_in:1.5,label_height_in:.75,
   authorized_name:'Dana',approval_date:'2026-10-19',signature_data:'data:image/png;base64,aGVsbG8='
 };
 before(async()=>{
  db = new PGlite();
  await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
- create schema auth; create table auth.users (id uuid primary key,email text,raw_app_meta_data jsonb,email_confirmed_at timestamptz,banned_until timestamptz,deleted_at timestamptz,is_anonymous boolean default false);`);
+ create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]); create table storage.objects(bucket_id text,name text); alter table storage.objects enable row level security; create schema auth; create table auth.users (id uuid primary key,email text,raw_app_meta_data jsonb,email_confirmed_at timestamptz,banned_until timestamptz,deleted_at timestamptz,is_anonymous boolean default false);`);
  for(const file of fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql')).sort()) {
    if(file.endsWith('_provider_independent_orders.sql')) {
      await db.exec("insert into auth.users(id,email,raw_app_meta_data) values ('10000000-0000-4000-8000-000000000099','migration@toolhound.com','{}'); insert into public.order_requests(id,created_by,mode,company_name,contact_name,contact_email,barcode_type,quote_name,quote_sha256,quote_data,token_hash,ticket_state,linear_identifier,linear_url) values ('20000000-0000-4000-8000-000000000099','10000000-0000-4000-8000-000000000099','live','Legacy','Dana','dana@acme.example','linear','old.pdf','oldhash','JVBERi0xLjQ=','legacy-token','ready','SALES-418','https://linear.app/example');");
@@ -246,13 +246,50 @@ test('every production test scenario satisfies the real order constraints',async
  const context={};vm.createContext(context);
  vm.runInContext(stripTypeScriptTypes(fs.readFileSync('supabase/functions/order-requests/test-runner.ts','utf8').replace(/^export /gm,'')),context);
  let n=200;
- for(const barcode of ['linear','qr']) for(const artwork of ['toolhound_logo','custom_logo','custom_text','serial_only'])
+ for(const barcode of ['linear','qr']) for(const artwork of (barcode==='linear'?['custom_text','serial_only']:['toolhound_logo','custom_logo','custom_text','serial_only']))
  for(const material of ['premium_poly_pro','white_polypropylene','anodized_aluminum_3mil']) for(const po of [true,false])
  for(const colour of (['custom_text','serial_only'].includes(artwork)?[false]:[true,false])){
   const fixture=context.testOrderFixture({barcode,artwork,material,po,colour});
   const id='20000000-0000-4000-8000-'+String(n++).padStart(12,'0');
   await seed(id);
+  await db.query('update public.order_requests set barcode_type=$2 where id=$1',[id,barcode]);
   const result=await submit(id,id,fixture.row);
   assert.match(result.order_ref,/^[0-9]+$/);
  }
+});
+
+test('new artwork limits follow the request code type and cannot be bypassed',async()=>{
+ let n=500;
+ for(const [code,values] of [
+  ['linear',{logo_choice:'toolhound_logo',text_lines:null}],
+  ['linear',{logo_choice:'custom_logo',text_lines:null}],
+  ['linear',{text_lines:['one','two']}],
+  ['linear',{text_lines:['1234567890123456789']}],
+  ['qr',{text_lines:['12345678901']}],
+  ['qr',{text_lines:['a','b','c','d']}],
+  ['linear',{logo_file_name:'bad.png',logo_file_data:'data:image/png;base64,aGVsbG8='}]
+ ]){
+  const id='20000000-0000-4000-8000-'+String(n++).padStart(12,'0');
+  await seed(id);await db.query('update public.order_requests set barcode_type=$2 where id=$1',[id,code]);
+  await assert.rejects(()=>submit(id,id,{...row,...values,barcode_type:code==='linear'?'qr':'linear'}),/text|logo|QR|Linear/i);
+ }
+ for(const [code,lines] of [['linear',['123456789012345678']],['qr',['1234567890','1234567890','1234567890']]]){
+  const id='20000000-0000-4000-8000-'+String(n++).padStart(12,'0');
+  await seed(id);await db.query('update public.order_requests set barcode_type=$2 where id=$1',[id,code]);
+  assert.ok((await submit(id,id,{...row,text_lines:lines})).order_ref);
+ }
+});
+
+test('stored artwork references survive submission, reject another order path, and retain private read policy',async()=>{
+ const id='20000000-0000-4000-8000-000000000901';await seed(id);
+ await db.query("update public.order_requests set barcode_type='qr' where id=$1",[id]);
+ const artwork={...row,logo_choice:'custom_logo',text_lines:null,logo_file_name:'original.png',logo_file_data:null,logo_storage_path:id+'/'+ 'a'.repeat(64)+'.png'};
+ await assert.rejects(()=>submit(id,id,{...artwork,logo_storage_path:'20000000-0000-4000-8000-000000000902/'+'a'.repeat(64)+'.png'}),/storage_path_valid/);
+ await submit(id,id,artwork);
+ const saved=(await db.query('select logo_file_data,logo_storage_path from public.label_orders where order_request_id=$1',[id])).rows[0];
+ assert.equal(saved.logo_file_data,null);assert.equal(saved.logo_storage_path,artwork.logo_storage_path);
+ const bucket=(await db.query("select * from storage.buckets where id='order-artwork'")).rows[0];
+ assert.equal(bucket.public,false);assert.equal(Number(bucket.file_size_limit),4194304);
+ const policies=(await db.query("select cmd,roles,qual from pg_policies where schemaname='storage' and tablename='objects'")).rows;
+ assert.equal(policies.length,1);assert.equal(policies[0].cmd,'SELECT');assert.match(policies[0].qual,/is_label_order_staff/);assert.match(policies[0].qual,/logo_storage_path/);
 });

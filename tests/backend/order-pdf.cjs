@@ -6,14 +6,16 @@ const path=require('node:path');
 const vm=require('node:vm');
 const {stripTypeScriptTypes}=require('node:module');
 
-for (const mime of [null, 'custom_text', 'image/png', 'image/jpeg', 'image/svg+xml', 'application/pdf']) test('submission preserves PDFs and artwork on retry: '+mime,async()=>{
- const source=fs.readFileSync('supabase/functions/order-requests/linear-adapter.ts','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'');
+for (const variant of [null, 'custom_text', 'image/png', 'image/jpeg', 'image/svg+xml', 'application/pdf','stored/png']) test('submission preserves PDFs and artwork on retry: '+variant,async()=>{
+ const stored=variant==='stored/png';const mime=stored?'image/png':variant;
+ const source=fs.readFileSync('supabase/functions/order-requests/artwork-storage.ts','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('supabase/functions/order-requests/linear-adapter.ts','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'');
  const metadata={quote_asset_url:'https://uploads/quote'};
  const request={id:'request',quote_version:1};
  const order={customer_po:'PO-12345',order_ref:'THL-SAVED-REF',submitted_at:'2026-10-20',company_name:'Saved customer', ...(mime === 'custom_text' ? {logo_choice:'custom_text',text_lines:['123456789012345678','Line two','Line three']} : mime ? {logo_choice:'custom_logo',logo_file_name:'customer-artwork',logo_file_data:'data:'+mime+';base64,'+Buffer.from('original file bytes').toString('base64')} : {})};
+ if(stored){order.logo_storage_path='request/original.png';order.logo_file_data=null;}
  let uploads=0,failed=false,body,rendered=[];
  let description='### Customer Name\n\nEdited by Graham\n\n### Label Order Form\n\nAwaiting customer submission\n\n### MetalCraft Quote\n\nKeep this quote\n\n### Customer logo\n\nNot provided\n\n### Other\n\nKeep these notes';
- const db={from:table=>{const q={select:()=>q,eq:()=>q,single:async()=>({data:order}),update:v=>{Object.assign(metadata,v.external_metadata);return q;},then:resolve=>Promise.resolve({data:null}).then(resolve)};return q;}};
+ const db={storage:{from:()=>({download:async()=>({data:new Blob(['original file bytes'],{type:mime})})})},from:table=>{const q={select:()=>q,eq:()=>q,single:async()=>({data:order}),update:v=>{Object.assign(metadata,v.external_metadata);return q;},then:resolve=>Promise.resolve({data:null}).then(resolve)};return q;}};
  const fetch=async(url,init)=>{
   if(url==='https://upload') { if(uploads===3){assert.equal(init.headers.get('Content-Type'),mime);assert.equal(Buffer.from(init.body).toString(),'original file bytes');} return new Response('',{status:200}); }
   const {query,variables}=JSON.parse(init.body);
@@ -25,7 +27,7 @@ for (const mime of [null, 'custom_text', 'image/png', 'image/jpeg', 'image/svg+x
   if(!failed){failed=true;throw Error('lost response');}
   return Response.json({data:{commentUpdate:{success:true}}});
  };
- const context={fetch,Response,Headers,AbortSignal,Uint8Array,atob,generateOrderPdf:async(row,a)=>{assert.equal(row,order);rendered.push(a);return new Uint8Array([37,80,68,70]);}};
+ const context={btoa,fetch,Response,Headers,AbortSignal,Uint8Array,atob,generateOrderPdf:async(row,a)=>{assert.equal(row.order_ref,order.order_ref);rendered.push(a);return new Uint8Array([37,80,68,70]);}};
  vm.createContext(context);vm.runInContext(stripTypeScriptTypes(source),context);
  const adapter=context.createLinearAdapter(db,()=> 'https://orders',r=>r.data);
  const external={external_id:'ticket',metadata};

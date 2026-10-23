@@ -1165,3 +1165,32 @@ test('auth card fits a narrow screen and returns preparation sign-in to admin', 
   expect(await page.evaluate(() => window.__AUTH_CALLS__.otp[0].options.emailRedirectTo)).toBe('http://127.0.0.1:4173/admin/orders');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('private storage artwork downloads with its original filename', async ({ page }) => {
+  await openDashboard(page);
+  await page.evaluate(() => {
+    const client = window.__TOOLHOUND_CLIENT__;
+    const from = client.from.bind(client);
+    client.from = function (table) {
+      const q = from(table);
+      const select = q.select.bind(q);
+      q.select = function (columns) {
+        if (!columns.includes('logo_file_data')) return select(columns);
+        const p = Promise.resolve({ data: [{ logo_file_name: 'original.svg', logo_file_data: null, logo_storage_path: 'request/hash.svg' }], error: null });
+        p.eq = () => p; p.limit = () => p; return p;
+      };
+      return q;
+    };
+    client.storage = { from: function (bucket) {
+      if (bucket !== 'order-artwork') throw Error('Wrong bucket');
+      return { download: async function (path) {
+        window.__STORAGE_PATH__ = path;
+        return { data: new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'], { type: 'image/svg+xml' }), error: null };
+      }};
+    }};
+  });
+  const download = page.waitForEvent('download');
+  await page.locator('tr.row').first().getByRole('button', { name: 'Logo', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('original.svg');
+  expect(await page.evaluate(() => window.__STORAGE_PATH__)).toBe('request/hash.svg');
+});

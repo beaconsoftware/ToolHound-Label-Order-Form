@@ -445,7 +445,7 @@
     labelled('Printing', String(o.fullColor).toLowerCase() === 'yes'
       ? 'Full colour' : 'Black and white, single colour')
       .forEach(function (n) { artwork.appendChild(n); });
-    labelled('Text on label', o.textLines && o.textLines.length
+    labelled(o.barcodeType === 'linear' ? 'Text above barcode' : 'Text on label', o.textLines && o.textLines.length
       ? o.textLines.join(' / ') : 'Logo only')
       .forEach(function (n) { artwork.appendChild(n); });
 

@@ -96,7 +96,7 @@ test('linked submission uses request endpoint and returns an immutable receipt',
   await page.evaluate(() => {
     const f = window.__TOOLHOUND_FORM__;
     Object.assign(f.state.data, { address:'1 Main',city:'Toronto',stateProvince:'ON',postalCode:'M1M 1M1',country:'Canada',
-      logoChoice:'serial_only',fullColor:'No',quantity:'3000',seqStart:'001',labelType:'premium_poly_pro',labelWidthIn:'1.5',labelHeightIn:'.75' });
+      logoChoice:'custom_text',textLines:['Toolhound'],fullColor:'No',quantity:'3000',seqStart:'001',labelType:'premium_poly_pro',labelWidthIn:'1.5',labelHeightIn:'.75' });
     f.state.step = 3; f.render();
   });
   await page.getByLabel('Authorized Name *').fill('Dana');

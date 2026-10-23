@@ -567,6 +567,20 @@
    * that holds a live staff session is a stored XSS with the session sitting
    * right there. A download hands the file to the operating system instead.
    */
+  function resolveStoredArtwork(res) {
+    var row = res && res.data && res.data[0];
+    if (res.error || !row || !row.logo_storage_path) return Promise.resolve(res);
+    return getDb().storage.from('order-artwork').download(row.logo_storage_path).then(function (file) {
+      if (file.error) throw file.error;
+      return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function () { row.logo_file_data = reader.result; resolve(res); };
+        reader.onerror = function () { reject(new Error('Could not read artwork.')); };
+        reader.readAsDataURL(file.data);
+      });
+    });
+  }
+
   function downloadArtwork(order, button, statusEl, label) {
     var db = getDb();
     if (!db) return;
@@ -576,10 +590,10 @@
 
     Promise.resolve(
       db.from('label_orders')
-        .select('logo_file_name,logo_file_data')
+        .select('logo_file_name,logo_file_data,logo_storage_path')
         .eq('id', order.id)
         .limit(1)
-    ).then(function (res) {
+    ).then(resolveStoredArtwork).then(function (res) {
       if (res && res.error) throw res.error;
       var row = res && res.data && res.data[0];
       if (!row || !row.logo_file_data) {
@@ -700,10 +714,10 @@
     if (!db) return Promise.resolve({ name: order.logo_file_name });
     return Promise.resolve(
       db.from('label_orders')
-        .select('logo_file_name,logo_file_data')
+        .select('logo_file_name,logo_file_data,logo_storage_path')
         .eq('id', order.id)
         .limit(1)
-    ).then(function (res) {
+    ).then(resolveStoredArtwork).then(function (res) {
       if (res && res.error) throw res.error;
       var row = (res && res.data && res.data[0]) || {};
       var name = row.logo_file_name || order.logo_file_name;
@@ -1306,8 +1320,8 @@
       var artworkPreview = el('div', { class: 'artwork-preview' });
       var previewStatus = el('p', { class: 'hint', role: 'status', text: 'Loading artwork…' });
       artworkPreview.appendChild(previewStatus);
-      Promise.resolve(getDb().from('label_orders').select('logo_file_name,logo_file_data').eq('id', order.id).limit(1))
-        .then(function (res) {
+      Promise.resolve(getDb().from('label_orders').select('logo_file_name,logo_file_data,logo_storage_path').eq('id', order.id).limit(1))
+        .then(resolveStoredArtwork).then(function (res) {
           if (!artworkPreview.isConnected) return;
           if (res.error) throw res.error;
           var file = res.data && res.data[0];

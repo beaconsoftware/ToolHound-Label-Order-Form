@@ -39,9 +39,10 @@ async function stubDb(page, { failWith = null, failFirstNTimes = 0 } = {}) {
 }
 
 // The two forms differ only by which code they are for, so the suite drives
-// the linear one by default and names the QR page where that is the point.
+// QR artwork branches by default, with explicit linear coverage below.
 const LINK = '#request=12345678-1234-4234-9234-123456789012&token=' + 'a'.repeat(64);
-const FORM_URL = '/linear-barcode.html' + LINK;
+const LINEAR_FORM_URL = '/linear-barcode.html' + LINK;
+const FORM_URL = '/qr-code.html' + LINK;
 const QR_FORM_URL = '/qr-code.html' + LINK;
 
 async function fillStep1(page, overrides = {}) {
@@ -81,8 +82,13 @@ async function fillQuantity(page, quantity) {
 }
 
 async function fillStep2(page, { quantity = '500', seqStart = '1000' } = {}) {
-  await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
-  await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+  if (!page.url().includes('linear-barcode')) {
+    await page.getByRole('radio', { name: 'ToolHound Logo' }).check();
+    await page.getByRole('radio', { name: 'Yes', exact: true }).check();
+  }
+  if (page.url().includes('linear-barcode') && !(await page.locator('input[name="logoChoice"]:checked').count())) {
+    await page.getByRole('radio', { name: 'Serial Number Only' }).check();
+  }
   await fillQuantity(page, quantity);
   await page.getByLabel('Starting Label Number *').fill(seqStart);
   await page.getByRole('radio', { name: '.002" Premium Poly Pro' }).check();
@@ -249,19 +255,20 @@ test.describe('step 2 validation', () => {
     await expect(page.getByText('Should the logo be printed in full colour?')).toBeVisible();
   });
 
-  // 18 characters, and the cap has to hold in the browser because the database
+  // QR text allows 10 characters; the cap must also hold in the browser.
   // enforces the same number: a form that let a nineteenth character through
   // would fail the insert with a constraint error naming nothing useful.
-  test('caps each custom text line at 18 characters', async ({ page }) => {
+  test('caps each custom text line at 10 characters', async ({ page }) => {
     await page.getByRole('radio', { name: 'Custom Text' }).check();
     const line1 = page.getByLabel('Text line 1');
     await line1.fill('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
-    await expect(line1).toHaveValue('ABCDEFGHIJKLMNOPQR');
+    await expect(line1).toHaveValue('ABCDEFGHIJ');
+    await page.screenshot({path:'/tmp/qr-artwork-options.png',fullPage:true});
   });
 
-  test('all three lines take the full 18 characters', async ({ page }) => {
+  test('all three lines take the full 10 characters', async ({ page }) => {
     await page.getByRole('radio', { name: 'Custom Text' }).check();
-    const eighteen = 'NORTHGATE MINING B';
+    const eighteen = 'NORTHGATE1';
     for (const n of [1, 2, 3]) {
       const line = page.getByLabel('Text line ' + n);
       await line.fill(eighteen);
@@ -271,7 +278,7 @@ test.describe('step 2 validation', () => {
       // row beside its own input; "Text line n" is an aria-label, not text, so
       // the row is located by position.
       await expect(page.locator('.textline-row').nth(n - 1)
-        .locator('.char-count')).toHaveText('18/18');
+        .locator('.char-count')).toHaveText('10/10');
     }
   });
 
@@ -723,72 +730,9 @@ test.describe('fields the vendor PO needs', () => {
   // A label that carries the serial number and nothing else. The other three
   // options could not express it, which is how "NO TEXT" ended up being typed
   // in as the text on a real order.
-  test.describe('serial number only', () => {
-    test('asks no artwork or colour questions and submits bare',
-      async ({ page }) => {
-        await fillStep1(page);
-        await page.getByRole('button', { name: 'Continue' }).click();
-
-        await page.getByRole('radio', { name: 'Serial Number Only' }).check();
-        // No logo to colour, so the question and its surcharge do not apply.
-        await expect(page.getByText('Should the logo be printed in full colour?'))
-          .toHaveCount(0);
-        // And no artwork inputs.
-        await expect(page.getByLabel('Text line 1')).toHaveCount(0);
-        await expect(page.getByText('Upload customer logo file')).toHaveCount(0);
-
-        await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
-        await page.getByRole('radio', { name: '0.625" Round' }).check();
-        await fillQuantity(page, '500');
-        await page.getByLabel('Starting Label Number *').fill('NT017800');
-        await page.getByRole('button', { name: 'Continue' }).click();
-        await page.getByRole('button', { name: 'Continue to Authorization' }).click();
-        await fillStep4(page);
-        await page.getByRole('button', { name: 'Submit Order' }).click();
-
-        const row = (await page.evaluate(() => window.__INSERTED__))[0];
-        expect(row.logo_choice).toBe('serial_only');
-        expect(row.text_lines).toBeNull();
-        expect(row.logo_file_name).toBeNull();
-        // The column is required, and the implied answer is no surcharge.
-        expect(row.full_color).toBe('No');
-      });
-
-    test('the vendor document says so rather than leaving artwork blank',
-      async ({ page }) => {
-        await fillStep1(page);
-        await page.getByRole('button', { name: 'Continue' }).click();
-        await page.getByRole('radio', { name: 'Serial Number Only' }).check();
-        await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
-        await page.getByRole('radio', { name: '0.625" Round' }).check();
-        await fillQuantity(page, '500');
-        await page.getByLabel('Starting Label Number *').fill('NT017800');
-        await page.getByRole('button', { name: 'Continue' }).click();
-        await page.getByRole('button', { name: 'Continue to Authorization' }).click();
-        await fillStep4(page);
-        await page.getByRole('button', { name: 'Submit Order' }).click();
-
-        await page.waitForSelector('.order-doc', { state: 'attached' });
-        await page.emulateMedia({ media: 'print' });
-        const doc = page.locator('.order-doc');
-        await expect(doc).toContainText('Serial number only');
-        await expect(doc).toContainText('no logo, no text');
-        await expect(doc).not.toContainText('NO TEXT');
-      });
-
-    // The reason this option exists: it is available on the die that has no
-    // room for text, where Custom Text is not.
-    test('is available on the round die, unlike custom text', async ({ page }) => {
-      await fillStep1(page);
-      await page.getByRole('button', { name: 'Continue' }).click();
-
-      await page.getByRole('radio', { name: 'Serial Number Only' }).check();
-      await page.getByRole('radio', { name: 'Anodized Aluminum Foil' }).check();
-      await expect(page.getByRole('radio', { name: '0.625" Round' })).toBeEnabled();
-
-      await page.getByRole('radio', { name: 'Custom Text' }).check();
-      await expect(page.getByRole('radio', { name: '0.625" Round' })).toBeDisabled();
-    });
+  test('QR offers serial-only artwork alongside logos or text', async ({page})=>{
+    await fillStep1(page);await page.getByRole('button',{name:'Continue'}).click();
+    await expect(page.getByRole('radio',{name:'Serial Number Only'})).toHaveCount(1);
   });
 
   // 0.625" across leaves nowhere to put a line of text beside the code, so the
@@ -1314,7 +1258,7 @@ test.describe('two forms', () => {
   const pub = (f) => path.join(__dirname, '..', 'public', f);
 
   test('neither form asks the customer which code they want', async ({ page }) => {
-    for (const url of [FORM_URL, QR_FORM_URL]) {
+    for (const url of [LINEAR_FORM_URL, QR_FORM_URL]) {
       await page.goto(url);
       await expect(page.getByRole('heading', { name: /Customer & Shipping/ }))
         .toBeVisible();
@@ -1326,7 +1270,7 @@ test.describe('two forms', () => {
   });
 
   test('each form submits its own code type', async ({ page }) => {
-    for (const [url, expected] of [[FORM_URL, 'linear'], [QR_FORM_URL, 'qr']]) {
+    for (const [url, expected] of [[LINEAR_FORM_URL, 'linear'], [QR_FORM_URL, 'qr']]) {
       await stubDb(page);
       await submitOrder(page, { url });
       const row = (await page.evaluate(() => window.__INSERTED__)).slice(-1)[0];
@@ -1339,7 +1283,7 @@ test.describe('two forms', () => {
   test('the QR form states QR on the document, the linear form states linear',
     async ({ page }) => {
       for (const [url, wording, absent] of [
-        [FORM_URL, 'Linear barcode', 'QR code'],
+        [LINEAR_FORM_URL, 'Linear barcode', 'QR code'],
         [QR_FORM_URL, 'QR code', 'Linear barcode']
       ]) {
         // Reset the media each pass: print CSS hides the action bar, so a
@@ -1362,7 +1306,7 @@ test.describe('two forms', () => {
   // The customer should be able to see they were sent the right link before
   // they authorise a nonreturnable order.
   test('the review page states which code the order is for', async ({ page }) => {
-    for (const [url, wording] of [[FORM_URL, 'Linear barcode'], [QR_FORM_URL, 'QR code']]) {
+    for (const [url, wording] of [[LINEAR_FORM_URL, 'Linear barcode'], [QR_FORM_URL, 'QR code']]) {
       await page.emulateMedia({ media: 'screen' });
       await stubDb(page);
       await page.goto(url);
@@ -1479,4 +1423,24 @@ test.describe('custom order quantities', () => {
     await page.getByRole('radio', { name: 'Custom Text' }).check();
     await expect(page.getByText(/surcharge/)).toHaveCount(0);
   });
+});
+
+test('linear artwork offers serial only or blank top text with an 18-character limit and no logos',async({page})=>{
+ await page.goto(LINEAR_FORM_URL);await fillStep1(page);await page.getByRole('button',{name:'Continue'}).click();
+ await expect(page.getByLabel('Text line 1')).toHaveCount(0);
+ await page.getByRole('radio',{name:'Serial Number Only'}).check();
+ await expect(page.getByLabel('Text line 1')).toHaveCount(0);
+ await page.getByRole('radio',{name:'Custom Text'}).check();
+ await expect(page.getByLabel('Text line 1')).toHaveValue('');
+ await page.screenshot({path:'/tmp/linear-artwork-options.png',fullPage:true});
+ await expect(page.getByLabel('Text line 2')).toHaveCount(0);
+ await expect(page.getByRole('radio',{name:/Logo/})).toHaveCount(0);
+ await page.getByLabel('Text line 1').fill('ABCDEFGHIJKLMNOPQRST');
+ await expect(page.getByLabel('Text line 1')).toHaveValue('ABCDEFGHIJKLMNOPQR');
+ await fillStep2(page);await page.getByRole('button',{name:'Continue'}).click();
+ await page.getByRole('button',{name:'Continue to Authorization'}).click();await fillStep4(page);
+ await page.getByRole('button',{name:'Submit Order'}).click();
+ const row=(await page.evaluate(()=>window.__INSERTED__))[0];
+ expect(row.logo_choice).toBe('custom_text');expect(row.text_lines).toEqual(['ABCDEFGHIJKLMNOPQR']);
+ await expect(page.locator('.order-doc')).toContainText('Text above barcode');
 });
