@@ -716,9 +716,9 @@ test.describe('authorization record', () => {
       expect(flavour).toContain('Acme Industrial');
       expect(flavour).toContain('0.6250 in dia.');
       expect(flavour).toContain('ACME');
-      // ToolHound's proof and invoice routing is not the supplier's business,
-      // so the email carries the specification and the customer's notes only.
-      expect(flavour).not.toContain('Send a proof for customer approval');
+      expect(flavour).toContain('Send a proof for customer approval');
+      expect(flavour).toContain('ian.wilson@toolhound.com');
+      expect(flavour).toContain('ap.toolhound@ap.ramp.com');
       expect(flavour).not.toContain('Invoice to');
     }
     expect(clip['text/html']).toContain('.003&quot; anodized aluminum foil label');

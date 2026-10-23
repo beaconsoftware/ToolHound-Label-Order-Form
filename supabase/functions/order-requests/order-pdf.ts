@@ -23,7 +23,7 @@ export async function generateOrderPdf(row: any, audience: 'vendor' | 'record') 
       const rows = selector === '.od-kv'
         ? Array.from({ length: children.length / 2 }, (_, i) => children.slice(i * 2, i * 2 + 2))
         : [children];
-      table.setAttribute('data-pdfmake', JSON.stringify({ widths: rows[0].map(() => '*'), layout: 'noBorders' }));
+      table.setAttribute('data-pdfmake', JSON.stringify({ widths: rows[0].map(() => '*'), layout: 'noBorders', dontBreakRows: selector === '.od-siggrid' }));
       const tbody = document.createElement('tbody');
       table.appendChild(tbody);
       for (const cells of rows) {
@@ -57,7 +57,6 @@ export async function generateOrderPdf(row: any, audience: 'vendor' | 'record') 
       'od-foot': { fontSize: 8, margin: [0, 14, 0, 0], color: '#5B5352' },
       'od-sig': { margin: [0, 6, 0, 6] }
     },
-    footer: (current: number, total: number) => ({ text: `${row.order_ref}  ·  ${current} / ${total}`, alignment: 'right', margin: [32, 0, 32, 0], fontSize: 8 }),
     content
   };
   // Attribute sizing works in both html-to-pdfmake and the browser DOM adapter.

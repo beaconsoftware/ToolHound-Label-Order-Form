@@ -125,7 +125,8 @@ async function submitted(r: any, external: any) {
   const issue = issueResult.issue;
   if (!issue || issue.id !== external.external_id) throw new Error('Submission issue mapping mismatch.');
   const current = issue.description || '';
-  const form = `Submitted at ${order.submitted_at}.\n\nOrder reference: ${order.order_ref}\n\n[Vendor order PDF](${external.metadata.vendor_pdf_url})\n\n[Signed customer order PDF](${external.metadata.signed_pdf_url})`;
+  const poDetails = order.customer_po ? '\n\nCustomer PO #: ' + order.customer_po + '\nInclude this PO on the invoice and shipping label.' : '';
+  const form = `Submitted at ${order.submitted_at}.\n\nOrder reference: ${order.order_ref}${poDetails}\n\n[Vendor order PDF](${external.metadata.vendor_pdf_url})\n\n[Signed customer order PDF](${external.metadata.signed_pdf_url})`;
   const section = /(^#{1,6} Label Order Form[^\S\r\n]*\r?\n)([\s\S]*?)(?=^#{1,6} |$(?![\s\S]))/m;
   let updated = current;
   if (section.test(current)) {
@@ -170,7 +171,7 @@ async function submitted(r: any, external: any) {
   const lookup = await linear('query($id: ID!) { comments(filter: { id: { eq: $id } }) { nodes { id issue { id } } } }', { id: r.id });
   const existing = lookup.comments.nodes[0];
   if (existing && existing.issue.id !== external.external_id) throw new Error('Submission mapping mismatch.');
-  const body = `Customer authorization received at ${order.submitted_at}.\n\nOrder reference: ${order.order_ref}\n\n[Vendor order PDF](${external.metadata.vendor_pdf_url})\n\n[Signed customer order PDF](${external.metadata.signed_pdf_url})\n\n[Review signed order](${env('ORDER_APP_URL')}/admin/orders)\n\nRequest: ${r.id}. Quote version: ${r.quote_version}.`;
+  const body = `Customer authorization received at ${order.submitted_at}.\n\nOrder reference: ${order.order_ref}${poDetails}\n\n[Vendor order PDF](${external.metadata.vendor_pdf_url})\n\n[Signed customer order PDF](${external.metadata.signed_pdf_url})\n\n[Review signed order](${env('ORDER_APP_URL')}/admin/orders)\n\nRequest: ${r.id}. Quote version: ${r.quote_version}.`;
   if (existing) {
     const result = await linear('mutation($id: String!, $input: CommentUpdateInput!) { commentUpdate(id: $id, input: $input) { success } }', { id: r.id, input: { body } });
     if (!result.commentUpdate.success) throw new Error('Linear submission update is unconfirmed.');
