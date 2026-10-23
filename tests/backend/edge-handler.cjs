@@ -235,7 +235,7 @@ test('previous PDF validates both fields and remains optional',async()=>{
 });
 
 const operator={email:'steve.li@beaconsoftware.com',userId:'878f32d6-ddbe-41fc-97c9-77beb4600aa2',runner:true};
-const scenario={barcode:'linear',artwork:'toolhound_logo',material:'premium_poly_pro',colour:false,po:true};
+const scenario={barcode:'linear',artwork:'custom_text',material:'premium_poly_pro',colour:false,po:true};
 test('production runner rejects everyone except its verified operator',async()=>{
  for(const options of [{},{email:operator.email},{userId:operator.userId,email:'other@beaconsoftware.com'},{...operator,unconfirmed:true}]){
   const r=runtime(options);assert.equal((await r.call({action:'test_run',id,scenario})).status,400);

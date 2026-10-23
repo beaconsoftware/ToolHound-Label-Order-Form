@@ -121,6 +121,7 @@ async function handle(req: Request, appOrigin: string) {
     // Never accept storage references chosen by an anonymous caller.
     if (row.logo_storage_path != null) throw new Error('Upload the artwork using this form.');
     if (!r.submitted_at && row.logo_choice === 'custom_logo') {
+      if (r.barcode_type !== 'qr') throw new Error('Linear labels do not support logos.');
       text(row.logo_file_name, 260);
       if (typeof row.logo_file_data !== 'string') throw new Error('Upload your artwork before submitting.');
       if (r.mode === 'live') {

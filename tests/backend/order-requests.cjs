@@ -9,7 +9,7 @@ const request = '20000000-0000-4000-8000-000000000001';
 const digest = 'a'.repeat(64);
 const row = {
   company_name:'Acme',contact_name:'Dana',contact_email:'dana@acme.example',address:'1 Main',city:'Toronto',
-  state_province:'ON',postal_code:'M1M 1M1',country:'Canada',barcode_type:'qr',logo_choice:'serial_only',
+  state_province:'ON',postal_code:'M1M 1M1',country:'Canada',barcode_type:'qr',logo_choice:'custom_text',text_lines:['Toolhound'],
   full_color:'No',quantity:3000,seq_start:'001',label_type:'premium_poly_pro',label_width_in:1.5,label_height_in:.75,
   authorized_name:'Dana',approval_date:'2026-10-19',signature_data:'data:image/png;base64,aGVsbG8='
 };
@@ -246,14 +246,37 @@ test('every production test scenario satisfies the real order constraints',async
  const context={};vm.createContext(context);
  vm.runInContext(stripTypeScriptTypes(fs.readFileSync('supabase/functions/order-requests/test-runner.ts','utf8').replace(/^export /gm,'')),context);
  let n=200;
- for(const barcode of ['linear','qr']) for(const artwork of ['toolhound_logo','custom_logo','custom_text','serial_only'])
+ for(const barcode of ['linear','qr']) for(const artwork of (barcode==='linear'?['custom_text','serial_only']:['toolhound_logo','custom_logo','custom_text','serial_only']))
  for(const material of ['premium_poly_pro','white_polypropylene','anodized_aluminum_3mil']) for(const po of [true,false])
  for(const colour of (['custom_text','serial_only'].includes(artwork)?[false]:[true,false])){
   const fixture=context.testOrderFixture({barcode,artwork,material,po,colour});
   const id='20000000-0000-4000-8000-'+String(n++).padStart(12,'0');
   await seed(id);
+  await db.query('update public.order_requests set barcode_type=$2 where id=$1',[id,barcode]);
   const result=await submit(id,id,fixture.row);
   assert.match(result.order_ref,/^[0-9]+$/);
+ }
+});
+
+test('new artwork limits follow the request code type and cannot be bypassed',async()=>{
+ let n=500;
+ for(const [code,values] of [
+  ['linear',{logo_choice:'toolhound_logo',text_lines:null}],
+  ['linear',{logo_choice:'custom_logo',text_lines:null}],
+  ['linear',{text_lines:['one','two']}],
+  ['linear',{text_lines:['1234567890123456789']}],
+  ['qr',{text_lines:['12345678901']}],
+  ['qr',{text_lines:['a','b','c','d']}],
+  ['linear',{logo_file_name:'bad.png',logo_file_data:'data:image/png;base64,aGVsbG8='}]
+ ]){
+  const id='20000000-0000-4000-8000-'+String(n++).padStart(12,'0');
+  await seed(id);await db.query('update public.order_requests set barcode_type=$2 where id=$1',[id,code]);
+  await assert.rejects(()=>submit(id,id,{...row,...values,barcode_type:code==='linear'?'qr':'linear'}),/text|logo|QR|Linear/i);
+ }
+ for(const [code,lines] of [['linear',['123456789012345678']],['qr',['1234567890','1234567890','1234567890']]]){
+  const id='20000000-0000-4000-8000-'+String(n++).padStart(12,'0');
+  await seed(id);await db.query('update public.order_requests set barcode_type=$2 where id=$1',[id,code]);
+  assert.ok((await submit(id,id,{...row,text_lines:lines})).order_ref);
  }
 });
 
