@@ -1,3 +1,4 @@
+import { storeArtwork } from './artwork-storage.ts';
 import { isTestOperator, testOrderFixture } from './test-runner.ts';
 import { generateOrderPdf } from './order-pdf.ts';
 import { createIntegrationRunner, integrationProvider } from './integrations.ts';
@@ -117,6 +118,17 @@ async function handle(req: Request, appOrigin: string) {
     for (const key of ['company_name','contact_name','contact_email','address','city','state_province','postal_code','country','authorized_name']) text(row[key]);
     if (!email.test(row.contact_email) || !row.signature_data?.startsWith('data:image/png;base64,') || !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 1000000) throw new Error('Complete the order details and authorization before submitting.');
     if (row.customer_po != null && row.customer_po !== '') row.customer_po = text(row.customer_po, 64);
+    // Never accept storage references chosen by an anonymous caller.
+    if (row.logo_storage_path != null) throw new Error('Upload the artwork using this form.');
+    if (!r.submitted_at && row.logo_choice === 'custom_logo') {
+      if (r.barcode_type !== 'qr') throw new Error('Linear labels do not support logos.');
+      text(row.logo_file_name, 260);
+      if (typeof row.logo_file_data !== 'string') throw new Error('Upload your artwork before submitting.');
+      if (r.mode === 'live') {
+        row.logo_storage_path = await storeArtwork(db, r.id, row.logo_file_data);
+        row.logo_file_data = null;
+      }
+    }
     const receipt = checked(await db.rpc('submit_order_request', { p_id: r.id, p_token_hash: digest, p_row: row }));
     const saved = withReceipt(checked(await db.from('order_requests').select('*,' + receiptJoin).eq('id', r.id).single()));
     scheduleSync(saved.id);

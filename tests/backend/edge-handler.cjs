@@ -11,7 +11,7 @@ function runtime(options = {}) {
   ORDER_ALLOWED_ORIGINS:options.origins||'',ORDER_LINK_SECRET:'test-secret-with-at-least-32-characters',ORDER_REQUESTS_MODE:options.mode || 'live',
   ORDER_INTEGRATION_PROVIDER:options.disabled?'none':options.provider,LINEAR_LABEL_ORDER_TEMPLATE_ID:options.templateId,LINEAR_API_KEY:'private-linear',LINEAR_TEAM_ID:'team',LINEAR_INTAKE_STATE_ID:'state' };
  const jobs = new Map(), tasks = [], submitted = new Map();
- const db={auth:{getUser:async token=>({data:{user:token==='staff'?{id:options.userId||'staff', email:options.email||'graham.cooper@toolhound.com',email_confirmed_at:options.unconfirmed?null:'2026-01-01'}:null},error:token!=='staff'})},
+ const db={storage:{from:()=>({upload:async(path,bytes,options)=>{if(options.upsert)throw Error('Must be immutable');return {error:null};}})},auth:{getUser:async token=>({data:{user:token==='staff'?{id:options.userId||'staff', email:options.email||'graham.cooper@toolhound.com',email_confirmed_at:options.unconfirmed?null:'2026-01-01'}:null},error:token!=='staff'})},
  rpc: async (name,args)=>{
   if(name==='is_label_order_staff') {
    const address=(options.email || 'graham.cooper@toolhound.com').toLowerCase();
@@ -87,7 +87,7 @@ function runtime(options = {}) {
   if(query.includes('issues(')) return Response.json({data:{issues:{nodes:issues.has(variables.id)?[issues.get(variables.id)]:[]}}});
   throw new Error('Unexpected outbound operation');
  }
- const source=['test-runner.ts','linear-adapter.ts','integrations.ts','index.ts'].map(file=>fs.readFileSync('supabase/functions/order-requests/'+file,'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')).join('\n');
+ const source=['artwork-storage.ts','test-runner.ts','linear-adapter.ts','integrations.ts','index.ts'].map(file=>fs.readFileSync('supabase/functions/order-requests/'+file,'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')).join('\n');
  const context={structuredClone,createClient:()=>db,EdgeRuntime:{waitUntil:p=>tasks.push(p)},Deno:{env:{get:k=>env[k]},serve:fn=>{handler=fn;}},TextEncoder,TextDecoder,Uint8Array,Headers,Request,Response,URL,URLSearchParams,crypto:webcrypto,fetch:fakeFetch,AbortSignal,atob,btoa,generateOrderPdf:async()=>new TextEncoder().encode("%PDF-test"),console};
  vm.runInNewContext(stripTypeScriptTypes(source),context);
  return {raw:handler,rows,issues,events,jobs,submitted,flush:async()=>{await Promise.all(tasks);},call:async(body,bearer='staff',extraHeaders={})=>{
@@ -235,7 +235,7 @@ test('previous PDF validates both fields and remains optional',async()=>{
 });
 
 const operator={email:'steve.li@beaconsoftware.com',userId:'878f32d6-ddbe-41fc-97c9-77beb4600aa2',runner:true};
-const scenario={barcode:'linear',artwork:'toolhound_logo',material:'premium_poly_pro',colour:false,po:true};
+const scenario={barcode:'linear',artwork:'custom_text',material:'premium_poly_pro',colour:false,po:true};
 test('production runner rejects everyone except its verified operator',async()=>{
  for(const options of [{},{email:operator.email},{userId:operator.userId,email:'other@beaconsoftware.com'},{...operator,unconfirmed:true}]){
   const r=runtime(options);assert.equal((await r.call({action:'test_run',id,scenario})).status,400);
@@ -258,4 +258,14 @@ test('runner rejects unknown scenarios and refuses shadow mode or another reques
  }
  const r=runtime(operator);await r.call(payload);
  assert.equal((await r.call({action:'test_run',id,scenario})).status,400);assert.equal(r.submitted.size,0);
+});
+
+test('QR submission stores a private reference and repeat does not overwrite it',async()=>{
+ const r=runtime(operator);
+ const result=await r.call({action:'test_run',id,scenario:{...scenario,barcode:'qr',artwork:'custom_logo'}});
+ assert.equal(result.status,200);assert.equal(r.submitted.get(id).logo_file_data,null);
+ assert.match(r.submitted.get(id).logo_storage_path,new RegExp('^'+id+'/[a-f0-9]{64}\\.png$'));
+ const path=r.submitted.get(id).logo_storage_path;
+ const retry=await r.call({action:'test_run',id,scenario:{...scenario,barcode:'qr',artwork:'custom_logo'}});
+ assert.equal(retry.status,200);assert.equal(r.submitted.get(id).logo_storage_path,path);
 });

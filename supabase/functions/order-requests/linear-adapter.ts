@@ -1,3 +1,4 @@
+import { hydrateArtwork } from './artwork-storage.ts';
 import { generateOrderPdf } from './order-pdf.ts';
 // Provider-specific API, templates and upload behavior stay behind this adapter.
 export function createLinearAdapter(db: any, env: (key: string) => string, checked: (result: any) => any) {
@@ -85,7 +86,7 @@ async function create(r: any, external: any) {
   checked(await db.from('order_requests').update({ external_identifier: issue.identifier, external_url: issue.url }).eq('id', external.id));
 }
 async function submitted(r: any, external: any) {
-  const order = checked(await db.from('label_orders').select('*').eq('order_request_id', r.id).single());
+  const order = await hydrateArtwork(db, checked(await db.from('label_orders').select('*').eq('order_request_id', r.id).single()));
   if (!order) throw new Error('The submitted order could not be found.');
   for (const audience of ['vendor', 'record'] as const) {
     const key = audience === 'vendor' ? 'vendor_pdf_url' : 'signed_pdf_url';

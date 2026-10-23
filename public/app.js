@@ -68,15 +68,7 @@
   var VARIANT = window.TOOLHOUND_FORM_VARIANT || '';
   var VARIANT_DEF = BARCODE_TYPES[VARIANT] || null;
 
-  /**
-   * What goes on the label besides the code.
-   *
-   * `serial_only` exists because the other three could not express a real
-   * order. NWT's 0.625" round asset tags carry the serial number and nothing
-   * else: no logo, no text. With only the first three options the form forced
-   * a choice, the customer picked Custom Text and typed the words "NO TEXT",
-   * and that order would have printed NO TEXT on 500 aluminium labels.
-   */
+  // Linear labels support top text or a serial number alone; QR also supports logos.
   var LOGO_CHOICES = [
     { value: 'custom_logo', label: 'Custom Logo' },
     { value: 'custom_text', label: 'Custom Text' },
@@ -156,12 +148,8 @@
     return !size || size.allowsText !== false;
   }
 
-  var MAX_TEXT_LINES = 3;
-  // 18, not the 10 the old Microsoft Forms sheet used and this form inherited.
-  // Must match label_text_lines_valid() in the database, which 0012 widened;
-  // the two rules exist separately so a bypassed form still cannot overrun the
-  // label, and they are only useful while they agree.
-  var MAX_TEXT_LINE_CHARS = 18;
+  var MAX_TEXT_LINES = VARIANT === 'linear' ? 1 : 3;
+  var MAX_TEXT_LINE_CHARS = VARIANT === 'linear' ? 18 : 10;
   var MAX_QUANTITY = 1000000;
 
   // 3,000 / 5,000 / 10,000, from config. The old 500-step list was the stock
@@ -188,7 +176,7 @@
       companyName: '', contactName: '', contactEmail: '',
       address: '', city: '', stateProvince: '', postalCode: '', country: 'Canada',
       logoChoice: '', logoFileName: '', logoFileData: '',
-      textLines: ['', '', ''],
+      textLines: VARIANT === 'linear' ? [''] : ['', '', ''],
       fullColor: '',
       quantity: '', seqStart: '', instructions: '',
       labelType: '', labelSizeChoice: '', labelWidthIn: '', labelHeightIn: '',
@@ -487,7 +475,7 @@
     var textErr = el('div', { class: 'err-msg', role: 'alert' },
       'Enter at least one line of text');
 
-    var logoField = radioField('Logo / Text on Labels *', 'logoChoice', LOGO_CHOICES,
+    var logoField = radioField('Logo / Text on Labels *', 'logoChoice', LOGO_CHOICES.filter(function(c){return VARIANT !== 'linear' || ['custom_text','serial_only'].includes(c.value);}),
       d.logoChoice, function (v) {
         d.logoChoice = v;
         logoField._errMsg.style.display = 'none';
@@ -574,7 +562,7 @@
 
     function renderTextLines() {
       var fw = el('div', { class: 'field' });
-      fw.appendChild(el('label', {}, 'Text to print on the labels *'));
+      fw.appendChild(el('label', {}, VARIANT === 'linear' ? 'Text across the top of the label *' : 'Text to print on the labels *'));
       var tl = el('div', { class: 'textlines' });
       for (var i = 0; i < MAX_TEXT_LINES; i++) {
         (function (idx) {
@@ -602,8 +590,7 @@
       fw.appendChild(tl);
       fw.appendChild(textErr);
       fw.appendChild(el('div', { class: 'hint' },
-        'Up to ' + MAX_TEXT_LINES + ' lines, maximum '
-        + MAX_TEXT_LINE_CHARS + ' characters each.'));
+        VARIANT === 'linear' ? 'One line above the barcode, up to 18 characters. Logos are not supported.' : 'Up to 3 lines, maximum 10 characters each.'));
       conditional.appendChild(fw);
     }
 
@@ -894,7 +881,9 @@
     card.appendChild(actionBar(function () { go(0); }, 'Continue', function () {
       var ok = true;
 
-      if (!d.logoChoice) {
+      if (VARIANT === 'linear' && d.logoChoice && !['custom_text','serial_only'].includes(d.logoChoice)) {
+        textErr.textContent = 'Choose custom text or serial number only for linear labels.'; textErr.style.display = 'block'; ok = false;
+      } else if (!d.logoChoice) {
         logoField._errMsg.style.display = 'block';
         ok = false;
       } else if (d.logoChoice === 'custom_logo' && !d.logoFileName) {
@@ -905,6 +894,8 @@
         textErr.style.display = 'block';
         ok = false;
       }
+
+      if (d.logoChoice === 'custom_text' && (filledTextLines(d).length > MAX_TEXT_LINES || filledTextLines(d).some(function(line){return line.length > MAX_TEXT_LINE_CHARS;}))) { textErr.textContent = 'Use up to ' + MAX_TEXT_LINES + ' lines of ' + MAX_TEXT_LINE_CHARS + ' characters.'; textErr.style.display = 'block'; ok = false; }
 
       if (colorField && !d.fullColor) { colorField._errMsg.style.display = 'block'; ok = false; }
 
@@ -1360,8 +1351,8 @@
       postal_code: d.postalCode.trim(),
       country: d.country.trim(),
       logo_choice: d.logoChoice,
-      logo_file_name: d.logoFileName || null,
-      logo_file_data: d.logoFileData || null,
+      logo_file_name: d.logoChoice === 'custom_logo' ? d.logoFileName || null : null,
+      logo_file_data: d.logoChoice === 'custom_logo' ? d.logoFileData || null : null,
       text_lines: d.logoChoice === 'custom_text' ? filledTextLines(d) : null,
       full_color: d.fullColor,
       quantity: toInt(d.quantity),

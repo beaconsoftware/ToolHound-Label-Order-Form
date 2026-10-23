@@ -99,11 +99,19 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
         box.appendChild(select);testGrid.appendChild(box);return select;
       }
       var testCode=choice('Code type','code',[['linear','Linear barcode'],['qr','QR code']]);
-      var testArt=choice('Artwork','artwork',[['toolhound_logo','ToolHound logo'],['custom_logo','Custom logo upload'],['custom_text','Custom text'],['serial_only','Serial number only']]);
+      var testArt=choice('Artwork','artwork',[['toolhound_logo','ToolHound logo'],['custom_logo','Custom logo upload'],['custom_text','Custom text'],['serial_only','Serial number only (no logo or text)']]);
       var testMaterial=choice('Material / size','material',[['premium_poly_pro','Premium Poly Pro — 1.25 × 0.50 in'],['white_polypropylene','White Polypropylene — 1.25 × 0.50 in'],['anodized_aluminum_3mil','Anodized Aluminum — 1.25 × 0.50 in']]);
       var testColour=choice('Printing','colour',[['no','Black and white'],['yes','Full colour']]);
       var testPo=choice('Customer PO','po',[['yes','Include a sample PO'],['no','Leave blank']]);
       testArt.addEventListener('change',function(){testColour.disabled=['custom_text','serial_only'].includes(testArt.value);if(testColour.disabled)testColour.value='no';});
+      function matchTestCode(){
+        var linear=testCode.value==='linear';
+        Array.from(testArt.options).forEach(function(o){o.disabled=linear && !['custom_text','serial_only'].includes(o.value);});
+        if(linear && !['custom_text','serial_only'].includes(testArt.value))testArt.value='serial_only';
+        testArt.dispatchEvent(new Event('change'));
+      }
+      testCode.addEventListener('change',matchTestCode);matchTestCode();
+
       testForm.appendChild(testGrid);
       var run=el('button',{type:'submit',class:'primary'},'Create and submit production test');
       var again=el('button',{type:'button',class:'secondary',style:'display:none'},'Start another test');
@@ -113,7 +121,7 @@ window.ToolHoundIntake = { mount: async function (root, client, session) {
       try {runState=JSON.parse(sessionStorage.getItem('toolhound-production-test'));}catch(_){}
       function lockRun(){[testCode,testArt,testMaterial,testColour,testPo].forEach(function(n){n.disabled=true;});}
       if(runState){testCode.value=runState.scenario.barcode;testArt.value=runState.scenario.artwork;testMaterial.value=runState.scenario.material;testColour.value=runState.scenario.colour?'yes':'no';testPo.value=runState.scenario.po?'yes':'no';lockRun();run.textContent='Retry saved production test';notice(testStatus,'A previous run may have completed. Retry to recover its original order.');}
-      again.addEventListener('click',function(){runState=null;sessionStorage.removeItem('toolhound-production-test');run.disabled=false;run.textContent='Create and submit production test';again.style.display='none';[testCode,testArt,testMaterial,testColour,testPo].forEach(function(n){n.disabled=false;});testArt.dispatchEvent(new Event('change'));testResult.replaceChildren();testStatus.hidden=true;});
+      again.addEventListener('click',function(){runState=null;sessionStorage.removeItem('toolhound-production-test');run.disabled=false;run.textContent='Create and submit production test';again.style.display='none';[testCode,testArt,testMaterial,testColour,testPo].forEach(function(n){n.disabled=false;});matchTestCode();testResult.replaceChildren();testStatus.hidden=true;});
       testForm.addEventListener('submit',async function(e){
         e.preventDefault();if(run.disabled)return;
         if(!runState){runState={id:crypto.randomUUID(),scenario:{barcode:testCode.value,artwork:testArt.value,material:testMaterial.value,colour:testColour.value==='yes',po:testPo.value==='yes'}};sessionStorage.setItem('toolhound-production-test',JSON.stringify(runState));}

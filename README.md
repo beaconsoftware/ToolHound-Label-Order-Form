@@ -397,10 +397,19 @@ Client-side checks are the user experience. The constraints are the guarantee.
   when each stage was reached, but not who moved it. Adding a
   `label_order_events` table written by the same trigger would give you that,
   and is worth doing before more than a couple of people use the dashboard.
-- **Artwork and signatures are stored inline.** Logo files and the rendered
-  signature are base64 encoded into `logo_file_data` / `signature_data`
-  rather than object storage. Fine at current volume; move to Supabase
-  Storage if orders grow or files get larger.
+- **New artwork uses private Storage.** The token-validated `order-requests`
+  handler uploads original logo bytes (up to 4 MiB) to `order-artwork` before
+  saving the order. `logo_storage_path` replaces inline `logo_file_data` for
+  new live submissions. Paths contain the request ID and a content hash;
+  retries never overwrite an existing file. Only staff can read objects tied
+  to saved orders; only the server service role writes. Linear downloads the
+  original and uploads its own permanent attachment. Older inline artwork is
+  still supported. Signatures remain inline, so unusually large signatures
+  can still exceed ARC's 64 KiB webhook limit.
+  Apply `20261023175601_private_order_artwork.sql`, deploy the updated admin
+  frontend, then bundle/deploy `order-requests`. Failed submissions can leave
+  unreferenced private objects; they are not readable through the staff policy
+  and must only be cleaned after confirming no order references them.
 - **Uploaded SVGs are untrusted.** SVG is accepted because vector artwork
   reproduces best at label size, but an SVG can carry script. The dashboard
   therefore hands artwork over as a download and never renders it inline, and
